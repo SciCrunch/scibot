@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+from IPython import embed
 import json, requests, re, traceback, pyramid
 try:
     import urlparse
 except ImportError:  # python3
     from urllib import parse as urlparse
+from os import environ
 from datetime import datetime
 from lxml import etree
 try:
@@ -14,8 +16,8 @@ except ImportError:
 host = 'localhost'
 port = 8080
 host_port = 'http://' + host + ':' + str(port)
-username = 'USERNAME'  # Hypothesis account
-password = 'PASSWORD'
+username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
+password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
 
 class HypothesisUtils:
     """ services for authenticating, searching, creating annotations """
@@ -131,7 +133,7 @@ def rrid(request):
             })
         response.status_int = 204
         return response
-
+    print('hello world')
     # http://www.jneurosci.org/content/34/24/8151.full 
     target_uri = urlparse.parse_qs(request.body)[b'uri'][0].decode('utf-8')
     api_query = 'https://hypothes.is/api/search?limit=200&uri=' + target_uri
@@ -139,12 +141,15 @@ def rrid(request):
     rows = json.loads(s)['rows']
     tags = [row['tags'][0] for row in rows]
     html = urlparse.parse_qs(request.body)[b'data'][0].decode('utf-8')
+    embed()
     print(target_uri)
     h = HypothesisUtils(username=username, password=password)
     h.login()
     found_rrids = {}
     try:
         matches = re.findall('(.{10}?)(RRID:\s*)([_\w\-:]+)([^\w].{10}?)', html)
+        print(html)
+        print(matches)
         for match in matches:
             prefix = match[0]
             exact = match[2]
