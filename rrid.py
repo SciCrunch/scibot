@@ -79,7 +79,7 @@ class HypothesisUtils:
         try:
             r = self.post_annotation(payload)
         except:
-            print traceback.print_exc()
+            print(traceback.print_exc())
         return r
 
     def post_annotation(self, payload):
@@ -134,7 +134,7 @@ def rrid(request):
     rows = json.loads(s)['rows']
     tags = [row['tags'][0] for row in rows]
     html = urlparse.parse_qs(request.body)['data'][0].decode('utf-8')
-    print target_uri
+    print(target_uri)
     h = HypothesisUtils(username=username, password=password)
     h.login()
     found_rrids = {}
@@ -144,14 +144,14 @@ def rrid(request):
             prefix = match[0]
             exact = match[2]
             if 'RRID:'+exact in tags:
-                print 'skipping %s, already annotated' % exact
+                print('skipping %s, already annotated' % exact)
                 continue
             found_rrids[exact] = None
             suffix = match[3]
-            print '\t' + exact
+            print('\t' + exact)
             resolver_uri = 'https://scicrunch.org/resolver/%s.xml' % exact
             r = requests.get(resolver_uri)
-            print r.status_code
+            print(r.status_code)
             xml = r.content
             found_rrids[exact] = r.status_code
             root = etree.fromstring(xml)
@@ -164,8 +164,8 @@ def rrid(request):
             s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
             r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
     except:
-        print 'error: %' % exact
-        print traceback.print_exc()
+        print('error: %' % exact)
+        print(traceback.print_exc())
 
     results = ', '.join(found_rrids.keys())
     r = Response(results)
@@ -182,7 +182,7 @@ def rrid(request):
         f.write(s.encode('utf-8'))
         f.close()
     except:
-        print traceback.print_exc()
+        print(traceback.print_exc())
 
     return r
 
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     config.add_view(bookmarklet, route_name='bookmarklet')
 
     app = config.make_wsgi_app()
-    print 'host: %s, port %s' % ( host, port )
+    print('host: %s, port %s' % ( host, port ))
     server = make_server(host, port, app)
     server.serve_forever()
 
