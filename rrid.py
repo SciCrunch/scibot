@@ -51,7 +51,7 @@ class HypothesisUtils:
         url = self.api_url + "/token?" + urlencode({'assertion':self.csrf_token})
         r = (requests.get(url=url,
                          cookies=cookies, headers=headers))
-        self.token = r.content
+        self.token = r.content.decode('utf-8')
 
     def make_annotation_payload_with_target_using_only_text_quote(self, url, prefix, exact, suffix, text, tags):
         """Create JSON payload for API call."""
@@ -87,6 +87,7 @@ class HypothesisUtils:
             r = self.post_annotation(payload)
         except:
             print(traceback.print_exc())
+            r = None  # wat
         return r
 
     def post_annotation(self, payload):
@@ -135,12 +136,12 @@ def rrid(request):
         return response
     print('hello world')
     # http://www.jneurosci.org/content/34/24/8151.full 
-    target_uri = urlparse.parse_qs(request.body)[b'uri'][0].decode('utf-8')
+    target_uri = urlparse.parse_qs(request.text)['uri'][0]#.decode('utf-8')
     api_query = 'https://hypothes.is/api/search?limit=200&uri=' + target_uri
     s = requests.get(api_query).text#.decode('utf-8')
     rows = json.loads(s)['rows']
     tags = [row['tags'][0] for row in rows]
-    html = urlparse.parse_qs(request.body)[b'data'][0].decode('utf-8')
+    html = urlparse.parse_qs(request.text)['data'][0]#.decode('utf-8')
     embed()
     print(target_uri)
     h = HypothesisUtils(username=username, password=password)
@@ -174,7 +175,7 @@ def rrid(request):
             s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
             r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
     except:
-        print('error: %' % exact)
+        print('error: %s' % exact)
         print(traceback.print_exc())
 
     results = ', '.join(found_rrids.keys())
@@ -188,8 +189,8 @@ def rrid(request):
         now = datetime.now().isoformat()[0:19].replace(':','').replace('-','')
         fname = 'rrid-%s.log' % now
         s = 'URL: %s\n\nResults: %s\n\nCount: %s\n\nText:\n\n%s' % ( target_uri, results, len(found_rrids), html ) 
-        with open(fname, 'wt') as f:
-            f.write(s)
+        with open(fname, 'wb') as f:
+            f.write(s.encode('utf-8'))
     except:
         print(traceback.print_exc())
 
