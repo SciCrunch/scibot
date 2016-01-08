@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from IPython import embed
+from __future__ import print_function
 import json, requests, re, traceback, pyramid
 try:
     import urlparse
@@ -87,7 +87,7 @@ class HypothesisUtils:
             r = self.post_annotation(payload)
         except:
             print(traceback.print_exc())
-            r = None  # wat
+            r = None  # if we get here someone probably ran the bookmarklet from firefox or the like
         return r
 
     def post_annotation(self, payload):
@@ -134,23 +134,19 @@ def rrid(request):
             })
         response.status_int = 204
         return response
-    print('hello world')
     # http://www.jneurosci.org/content/34/24/8151.full 
-    target_uri = urlparse.parse_qs(request.text)['uri'][0]#.decode('utf-8')
+    target_uri = urlparse.parse_qs(request.text)['uri'][0]
     api_query = 'https://hypothes.is/api/search?limit=200&uri=' + target_uri
-    s = requests.get(api_query).text#.decode('utf-8')
+    s = requests.get(api_query).text
     rows = json.loads(s)['rows']
     tags = [row['tags'][0] for row in rows]
-    html = urlparse.parse_qs(request.text)['data'][0]#.decode('utf-8')
-    embed()
+    html = urlparse.parse_qs(request.text)['data'][0]
     print(target_uri)
     h = HypothesisUtils(username=username, password=password)
     h.login()
     found_rrids = {}
     try:
         matches = re.findall('(.{10}?)(RRID:\s*)([_\w\-:]+)([^\w].{10}?)', html)
-        print(html)
-        print(matches)
         for match in matches:
             prefix = match[0]
             exact = match[2]
