@@ -48,4 +48,4 @@ The found RRIDs are logged to timestamped files, along with the text of the arti
 7. `export RRIDBOT_USERNAME=someusername`
 8. `export RRIDBOT_PASSWORD=somepassword`
 9. create a screen session
-10. in the screen session run `sudo ~/rrid/rrid.py` in the folder where you want to save the log files
+10. in the screen session run `sudo -E ~/rrid/rrid.py` in the folder where you want to save the log files (-E preserves the environment variables)
