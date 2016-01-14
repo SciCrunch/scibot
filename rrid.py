@@ -15,6 +15,7 @@ except ImportError:
 
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
 password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
+group = environ.get('RRIDBOT_GROUP', '__world__')
 print(username)  # sanity check
 
 prod_username = 'scibot'  # nasty hardcode
@@ -34,7 +35,7 @@ host_port = 'http://' + host + ':' + str(port)
 
 class HypothesisUtils:
     """ services for authenticating, searching, creating annotations """
-    def __init__(self, username='username', password=None, limit=None, max_results=None, domain=None):
+    def __init__(self, username='username', password=None, limit=None, max_results=None, domain=None, group=None):
         if domain is None:
             self.domain = 'hypothes.is'
         else:
@@ -44,8 +45,9 @@ class HypothesisUtils:
         self.query_url = 'https://%s/api/search?{query}' % self.domain
         self.username = username
         self.password = password
+        self.group = group if group is not None else '__world__'
         self.permissions = {
-                "read": ["group:__world__"],
+                "read": ['group:' + self.group],
                 "update": ['acct:' + self.username + '@hypothes.is'],
                 "delete": ['acct:' + self.username + '@hypothes.is'],
                 "admin":  ['acct:' + self.username + '@hypothes.is']
@@ -64,7 +66,16 @@ class HypothesisUtils:
         url = self.api_url + "/token?" + urlencode({'assertion':self.csrf_token})
         r = (requests.get(url=url,
                          cookies=cookies, headers=headers))
-        self.token = r.content.decode('utf-8')
+        self.token = r.content
+
+    def authenticated_api_query(self, url=None):
+        try:
+           headers = {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json;charset=utf-8' }
+           r = requests.get(url, headers=headers)
+           obj = json.loads(r.text)
+           return obj
+        except:
+            print traceback.print_exc()
 
     def make_annotation_payload_with_target_using_only_text_quote(self, url, prefix, exact, suffix, text, tags):
         """Create JSON payload for API call."""
@@ -75,6 +86,7 @@ class HypothesisUtils:
             "uri": url,
             "user": 'acct:' + self.username + '@hypothes.is',
             "permissions": self.permissions,
+            "group": self.group,
             "target": 
             [{
                 "scope": [url],
@@ -147,16 +159,22 @@ def rrid(request):
             })
         response.status_int = 204
         return response
-    # http://www.jneurosci.org/content/34/24/8151.full 
+
+    h = HypothesisUtils(username=username, password=password, group=group)
+    h.login()
+
     target_uri = urlparse.parse_qs(request.text)['uri'][0]
     api_query = 'https://hypothes.is/api/search?limit=200&uri=' + target_uri
-    s = requests.get(api_query).text
-    rows = json.loads(s)['rows']
-    tags = [row['tags'][0] for row in rows]
+    obj = h.authenticated_api_query(api_query)
+    rows = obj['rows']
+    tags = set()
+    for row in rows:
+        for tag in row['tags']:
+            if tag.startswith('RRID'):
+                tags.add(tag)
     html = urlparse.parse_qs(request.text)['data'][0]
     print(target_uri)
-    h = HypothesisUtils(username=username, password=password)
-    h.login()
+
     found_rrids = {}
     try:
         matches = re.findall('(.{10}?)(RRID:\s*)([_\w\-:]+)([^\w].{10}?)', html)
@@ -223,5 +241,4 @@ if __name__ == '__main__':
     print('host: %s, port %s' % ( host, port ))
     server = make_server(host, port, app)
     server.serve_forever()
-
 

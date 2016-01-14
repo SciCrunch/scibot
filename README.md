@@ -16,7 +16,7 @@ A tool and companion service used to:
 
 ## Capturing the bookmarklet
 
-Visit http://HOST:8080/bookmarklet which produces this page:
+Visit http://HOST:8081/bookmarklet which produces this page:
 
   To install the bookmarklet, drag this link -- rrid -- to your bookmarks bar.
 
