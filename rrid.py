@@ -17,9 +17,9 @@ username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
 password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
 print(username)  # sanity check
 
-prod_username = 'scibot'
+prod_username = 'scibot'  # nasty hardcode
 
-if username == 'scibot':  # nasty hardcode
+if username == prod_username:
     host = '0.0.0.0'
     port = 80
     group = 'scibot-curation'
@@ -45,7 +45,7 @@ class HypothesisUtils:
         self.username = username
         self.password = password
         self.permissions = {
-                "read": ["group:%s" % group],
+                "read": ["group:__world__"],
                 "update": ['acct:' + self.username + '@hypothes.is'],
                 "delete": ['acct:' + self.username + '@hypothes.is'],
                 "admin":  ['acct:' + self.username + '@hypothes.is']
