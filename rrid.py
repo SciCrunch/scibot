@@ -16,20 +16,18 @@ except ImportError:
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
 password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
 group = environ.get('RRIDBOT_GROUP', '__world__')
-print(username)  # sanity check
+print(username, group)  # sanity check
 
 prod_username = 'scibot'  # nasty hardcode
 
 if username == prod_username:
     host = '0.0.0.0'
     port = 80
-    group = 'scibot-curation'
 
 else: 
     print('no login detected, running on localhost only')
     host = 'localhost'
     port = 8080
-    group = '__world__'  # won't actually be used
 
 host_port = 'http://' + host + ':' + str(port)
 
@@ -66,7 +64,7 @@ class HypothesisUtils:
         url = self.api_url + "/token?" + urlencode({'assertion':self.csrf_token})
         r = (requests.get(url=url,
                          cookies=cookies, headers=headers))
-        self.token = r.content
+        self.token = r.content.decode('utf-8')
 
     def authenticated_api_query(self, url=None):
         try:
@@ -75,7 +73,7 @@ class HypothesisUtils:
            obj = json.loads(r.text)
            return obj
         except:
-            print traceback.print_exc()
+            print(traceback.print_exc())
 
     def make_annotation_payload_with_target_using_only_text_quote(self, url, prefix, exact, suffix, text, tags):
         """Create JSON payload for API call."""
