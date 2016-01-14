@@ -13,11 +13,24 @@ try:
 except ImportError:
     from urllib import urlencode
 
-host = 'localhost'
-port = 8080
-host_port = 'http://' + host + ':' + str(port)
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
 password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
+print(username)  # sanity check
+
+prod_username = 'scibot'
+
+if username == 'scibot':  # nasty hardcode
+    host = '0.0.0.0'
+    port = 80
+    group = 'scibot-curation'
+
+else: 
+    print('no login detected, running on localhost only')
+    host = 'localhost'
+    port = 8080
+    group = '__world__'  # won't actually be used
+
+host_port = 'http://' + host + ':' + str(port)
 
 class HypothesisUtils:
     """ services for authenticating, searching, creating annotations """
@@ -32,7 +45,7 @@ class HypothesisUtils:
         self.username = username
         self.password = password
         self.permissions = {
-                "read": ["group:__world__"],
+                "read": ["group:%s" % group],
                 "update": ['acct:' + self.username + '@hypothes.is'],
                 "delete": ['acct:' + self.username + '@hypothes.is'],
                 "admin":  ['acct:' + self.username + '@hypothes.is']
