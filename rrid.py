@@ -175,8 +175,9 @@ def rrid(request):
 
     found_rrids = {}
     try:
-        matches = re.findall('(.{10}?)(RRID:\s*)([_\w\-:]+)([^\w].{10}?)', html)
+        matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html.replace('–','-'))
         for match in matches:
+            print(match)
             prefix = match[0]
             exact = match[2]
             if 'RRID:'+exact in tags:
@@ -190,15 +191,19 @@ def rrid(request):
             print(r.status_code)
             xml = r.content
             found_rrids[exact] = r.status_code
-            root = etree.fromstring(xml)
-            data_elements = root.findall('data')[0]
-            s = ''
-            for data_element in data_elements:
-                name = data_element.find('name').text
-                value =data_element.find('value').text
-                s += '<p>%s: %s</p>' % (name, value)
-            s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
+            if r.status_code < 300:
+                root = etree.fromstring(xml)
+                data_elements = root.findall('data')[0]
+                s = ''
+                for data_element in data_elements:
+                    name = data_element.find('name').text
+                    value =data_element.find('value').text
+                    s += '<p>%s: %s</p>' % (name, value)
+                s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
+            else:
+                s = 'Resolver lookup failed.'
+                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags={'RRID:Unresolved'})
     except:
         print('error: %s' % exact)
         print(traceback.print_exc())
