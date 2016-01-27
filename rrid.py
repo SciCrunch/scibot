@@ -197,7 +197,10 @@ def rrid(request):
                 s = ''
                 for data_element in data_elements:
                     name = data_element.find('name').text
-                    value =data_element.find('value').text
+                    value = data_element.find('value').text
+                    if name == 'Reference' and value is not None and value.startswith('<a class'):
+                        if len(value) > 500:
+                            continue  # nif-0000-30467 fix keep those pubmed links short!
                     s += '<p>%s: %s</p>' % (name, value)
                 s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
                 r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
