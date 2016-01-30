@@ -1,17 +1,10 @@
-import json, requests, re, traceback, pyramid, urlparse
+import json, requests, re, traceback, pyramid, urlparse, types
 from datetime import datetime
 from lxml import etree
 try:
     from urllib.parse import urlencode
 except ImportError:
     from urllib import urlencode
-
-host = 'HOST'
-port = PORT
-host_port = 'http://' + host + ':' + str(port)
-username = 'USERNAME'  # Hypothesis account
-password = 'PASSWORD'
-group = 'GROUP'
 
 class HypothesisUtils:
     """ services for authenticating, searching, creating annotations """
@@ -26,6 +19,8 @@ class HypothesisUtils:
         self.username = username
         self.password = password
         self.group = group if group is not None else '__world__'
+        self.single_page_limit = 200 if limit is None else limit  # per-page, the api honors limit= up to (currently) 200
+        self.multi_page_limit = 200 if max_results is None else max_results  # limit for paginated results
         self.permissions = {
                 "read": ['group:' + self.group],
                 "update": ['acct:' + self.username + '@hypothes.is'],
@@ -52,7 +47,7 @@ class HypothesisUtils:
         try:
            headers = {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json;charset=utf-8' }
            r = requests.get(url, headers=headers)
-           obj = json.loads(r.text.decode('utf-8'))
+           obj = json.loads(r.text)
            return obj
         except:
             print traceback.print_exc()
@@ -99,6 +94,152 @@ class HypothesisUtils:
         data = json.dumps(payload, ensure_ascii=False)
         r = requests.post(self.api_url + '/annotations', headers=headers, data=data.encode('utf-8'))
         return r
+
+    def search_all(self, params={}):
+        """Call search API with pagination, return rows """
+        params['offset'] = 0
+        params['limit'] = self.single_page_limit
+        while True:
+            h_url = self.query_url.format(query=urlencode(params, True))
+            obj = self.authenticated_api_call(h_url)
+            rows = obj['rows']
+            row_count = len(rows)
+            if obj.has_key('replies'):
+               rows += obj['replies']
+            params['offset'] += row_count
+            if params['offset'] > self.multi_page_limit:
+                break
+            if len(rows) is 0:
+                break
+            for row in rows:
+                yield row
+
+    def authenticated_api_call(self, url=None):
+        try:
+           self.login()
+           headers = {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json;charset=utf-8' }
+           r = requests.get(url, headers=headers)
+           obj = json.loads(r.text.decode('utf-8'))
+           return obj
+        except:
+            print traceback.print_exc()
+
+    def make_annotation_payload_with_target_using_only_text_quote(self, url, prefix, exact, suffix, text, tags):
+        """Create JSON payload for API call."""
+        payload = {
+            "uri": url,
+            "user": 'acct:' + self.username + '@hypothes.is',
+            "permissions": self.permissions,
+            #"document": {
+            #    "link": [ { "href": url } ]
+            #    },
+            "target": 
+            [{
+                "scope": [url],
+                "selector": 
+                    [{
+                        "type": "TextQuoteSelector", 
+                        "prefix": prefix,
+                        "exact": exact,
+                        "suffix": suffix
+                        },]
+                }], 
+            "tags": tags,
+            "text": text
+        }
+        return payload
+
+class HypothesisAnnotation:
+    """Encapsulate one row of a Hypothesis API search."""   
+    def __init__(self, row):
+        self.type = None
+        self.id = row['id']
+        self.updated = row['updated'][0:19]
+        self.user = row['user'].replace('acct:','').replace('@hypothes.is','')
+
+        if row.has_key('uri'):    # should it ever not?
+            self.uri = row['uri']
+        else:
+             self.uri = "no uri field for %s" % self.id
+        self.uri = self.uri.replace('https://via.hypothes.is/h/','').replace('https://via.hypothes.is/','')
+
+        if self.uri.startswith('urn:x-pdf') and row.has_key('document'):
+            if row['document'].has_key('link'):
+                self.links = row['document']['link']
+                for link in self.links:
+                    self.uri = link['href']
+                    if self.uri.encode('utf-8').startswith('urn:') == False:
+                        break
+            if self.uri.encode('utf-8').startswith('urn:') and row['document'].has_key('filename'):
+                self.uri = row['document']['filename']
+
+        if row.has_key('document') and row['document'].has_key('title'):
+            t = row['document']['title']
+            if isinstance(t, types.ListType) and len(t):
+                self.doc_title = t[0]
+            else:
+                self.doc_title = t
+        else:
+            self.doc_title = self.uri
+        if self.doc_title is None:
+            self.doc_title = ''
+        self.doc_title = self.doc_title.replace('"',"'")
+        if self.doc_title == '': self.doc_title = 'untitled'
+
+        self.tags = []
+        if row.has_key('tags') and row['tags'] is not None:
+            self.tags = row['tags']
+            if isinstance(self.tags, types.ListType):
+                self.tags = [t.strip() for t in self.tags]
+
+        self.text = ''
+        if row.has_key('text'):
+            self.text = row['text']
+
+        self.references = []
+        if row.has_key('references'):
+            self.type = 'reply'
+            self.references = row['references']
+
+        self.target = []
+        if row.has_key('target'):
+            self.target = row['target']
+
+        self.is_page_note = False
+        try:
+            if self.references == [] and self.target is not None and len(self.target) and isinstance(self.target,list) and self.target[0].has_key('selector') == False:
+                self.is_page_note = True
+                self.type = 'pagenote'
+        except:
+            traceback.print_exc()
+        if row.has_key('document') and row['document'].has_key('link'):
+            self.links = row['document']['link']
+            if not isinstance(self.links, types.ListType):
+                self.links = [{'href':self.links}]
+        else:
+            self.links = []
+
+        self.start = self.end = self.prefix = self.exact = self.suffix = None
+        try:
+            if isinstance(self.target,list) and len(self.target) and self.target[0].has_key('selector'):
+                self.type = 'annotation'
+                selectors = self.target[0]['selector']
+                for selector in selectors:
+                    if selector.has_key('type') and selector['type'] == 'TextQuoteSelector':
+                        try:
+                            self.prefix = selector['prefix']
+                            self.exact = selector['exact']
+                            self.suffix = selector['suffix']
+                        except:
+                            traceback.print_exc()
+                    if selector.has_key('type') and selector['type'] == 'TextPositionSelector' and selector.has_key('start'):
+                        self.start = selector['start']
+                        self.end = selector['end']
+                    if selector.has_key('type') and selector['type'] == 'FragmentSelector' and selector.has_key('value'):
+                        self.fragment_selector = selector['value']
+
+        except:
+            print traceback.format_exc()
 
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
@@ -204,6 +345,13 @@ def rrid(request):
     return r
 
 if __name__ == '__main__':
+
+    host = 'HOST'
+    port = PORT
+    host_port = 'http://' + host + ':' + str(port)
+    username = 'USERNAME'  # Hypothesis account
+    password = 'PASSWORD'
+    group = 'GROUP'
 
     from wsgiref.simple_server import make_server
     from pyramid.config import Configurator
