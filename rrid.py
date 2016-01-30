@@ -347,8 +347,7 @@ def rrid(request):
 if __name__ == '__main__':
 
     host = 'HOST'
-    port = PORT
-    host_port = 'http://' + host + ':' + str(port)
+    port = 'PORT'
     username = 'USERNAME'  # Hypothesis account
     password = 'PASSWORD'
     group = 'GROUP'
