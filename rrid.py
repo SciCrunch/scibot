@@ -167,6 +167,8 @@ def rrid(request):
     rows = obj['rows']
     tags = set()
     for row in rows:
+        if row['group'] != group:  # api query returns unwanted groups
+            continue
         for tag in row['tags']:
             if tag.startswith('RRID'):
                 tags.add(tag)
