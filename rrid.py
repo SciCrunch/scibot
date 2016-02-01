@@ -104,7 +104,8 @@ class HypothesisUtils:
     def create_annotation_with_target_using_only_text_quote(self, url=None, prefix=None, 
                exact=None, suffix=None, text=None, tags=None):
         """Call API with token and payload, create annotation (using only text quote)"""
-        tags = ['RRID:' + exact]
+        tags = [] if tags is None else tags
+        tags += ['RRID:' + exact]
         payload = self.make_annotation_payload_with_target_using_only_text_quote(url, prefix, exact, suffix, text, tags)
         try:
             r = self.post_annotation(payload)
