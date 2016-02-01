@@ -197,7 +197,8 @@ def rrid(request):
                 root = etree.fromstring(xml)
                 if root.findall('error'):
                     s = 'Resolver lookup failed.'
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags={'RRID:Unresolved'})
+                    s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=['RRID:Unresolved'])
                     print('ERROR')
                 else:
                     data_elements = root.findall('data')[0]
