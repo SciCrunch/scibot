@@ -12,6 +12,7 @@ try:
     from urllib.parse import urlencode
 except ImportError:
     from urllib import urlencode
+from IPython import embed
 
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
 password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
@@ -193,18 +194,25 @@ def rrid(request):
             found_rrids[exact] = r.status_code
             if r.status_code < 300:
                 root = etree.fromstring(xml)
-                data_elements = root.findall('data')[0]
-                s = ''
-                for data_element in data_elements:
-                    name = data_element.find('name').text
-                    value = data_element.find('value').text
-                    if (name == 'Reference' or name == 'Mentioned In Literature') and value is not None and value.startswith('<a class'):
-                        if len(value) > 500:
-                            continue  # nif-0000-30467 fix keep those pubmed links short!
-                    s += '<p>%s: %s</p>' % (name, value)
-                s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
-                if exact == 'nif-0000-30467': print(s)
+                if root.findall('error'):
+                    s = 'Resolver lookup failed.'
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags={'RRID:Unresolved'})
+                    print('ERROR')
+                else:
+                    data_elements = root.findall('data')[0]
+                    s = ''
+                    data_elements = [(e.find('name').text, e.find('value').text) for e in data_elements]  # these shouldn't duplicate
+                    citation = [(n, v) for n, v in  data_elements if n == 'Proper Citation']
+                    name = [(n, v) for n, v in  data_elements if n == 'Name']
+                    data_elements = citation + name + sorted([(n, v) for n, v in  data_elements if n != 'Proper Citation' or n != 'Name'])
+                    for name, value in data_elements:
+                        if (name == 'Reference' or name == 'Mentioned In Literature') and value is not None and value.startswith('<a class'):
+                            if len(value) > 500:
+                                continue  # nif-0000-30467 fix keep those pubmed links short!
+                        s += '<p>%s: %s</p>' % (name, value)
+                    print(s)
+                    s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
             else:
                 s = 'Resolver lookup failed.'
                 r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags={'RRID:Unresolved'})
