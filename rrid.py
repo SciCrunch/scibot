@@ -12,7 +12,6 @@ try:
     from urllib.parse import urlencode
 except ImportError:
     from urllib import urlencode
-from IPython import embed
 
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
 password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
