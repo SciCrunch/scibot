@@ -207,7 +207,7 @@ def rrid(request):
                     data_elements = [(e.find('name').text, e.find('value').text) for e in data_elements]  # these shouldn't duplicate
                     citation = [(n, v) for n, v in  data_elements if n == 'Proper Citation']
                     name = [(n, v) for n, v in  data_elements if n == 'Name']
-                    data_elements = citation + name + sorted([(n, v) for n, v in  data_elements if n != 'Proper Citation' or n != 'Name'])
+                    data_elements = citation + name + sorted([(n, v) for n, v in  data_elements if str(n) != 'Proper Citation' or str(n) != 'Name'])
                     for name, value in data_elements:
                         if (name == 'Reference' or name == 'Mentioned In Literature') and value is not None and value.startswith('<a class'):
                             if len(value) > 500:
