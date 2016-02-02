@@ -1,6 +1,9 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import json, requests, re, traceback, pyramid, urlparse, types
 =======
+=======
+>>>>>>> 9ef61d1a2d86460cb4849a633591f7044a75c9b5
 #!/usr/bin/env python3
 from __future__ import print_function
 import requests, re, traceback, pyramid
@@ -9,6 +12,7 @@ try:
 except ImportError:  # python3
     from urllib import parse as urlparse
 from os import environ
+<<<<<<< HEAD
 >>>>>>> 9ef61d1a2d86460cb4849a633591f7044a75c9b5
 from datetime import datetime
 from lxml import etree
@@ -268,6 +272,29 @@ class HypothesisAnnotation:
 
         except:
             print traceback.format_exc()
+=======
+from datetime import datetime
+from lxml import etree
+from hypothesis import HypothesisUtils
+
+username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
+password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
+group = environ.get('RRIDBOT_GROUP', '__world__')
+print(username, group)  # sanity check
+
+prod_username = 'scibot'  # nasty hardcode
+
+if username == prod_username:
+    host = '0.0.0.0'
+    port = 80
+
+else: 
+    print('no login detected, running on localhost only')
+    host = 'localhost'
+    port = 8080
+
+host_port = 'http://' + host + ':' + str(port)
+>>>>>>> 9ef61d1a2d86460cb4849a633591f7044a75c9b5
 
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
