@@ -1,11 +1,36 @@
+<<<<<<< HEAD
 import json, requests, re, traceback, pyramid, urlparse, types
+=======
+#!/usr/bin/env python3
+from __future__ import print_function
+import requests, re, traceback, pyramid
+try:
+    import urlparse
+except ImportError:  # python3
+    from urllib import parse as urlparse
+from os import environ
+>>>>>>> 9ef61d1a2d86460cb4849a633591f7044a75c9b5
 from datetime import datetime
 from lxml import etree
-try:
-    from urllib.parse import urlencode
-except ImportError:
-    from urllib import urlencode
+from hypothesis import HypothesisUtils
 
+username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
+password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
+group = environ.get('RRIDBOT_GROUP', '__world__')
+print(username, group)  # sanity check
+
+prod_username = 'scibot'  # nasty hardcode
+
+if username == prod_username:
+    host = '0.0.0.0'
+    port = 80
+
+else: 
+    print('no login detected, running on localhost only')
+    host = 'localhost'
+    port = 8080
+
+<<<<<<< HEAD
 class HypothesisUtils:
     """ services for authenticating, searching, creating annotations """
     def __init__(self, username='username', password=None, limit=None, max_results=None, domain=None, group=None):
@@ -94,6 +119,9 @@ class HypothesisUtils:
         data = json.dumps(payload, ensure_ascii=False)
         r = requests.post(self.api_url + '/annotations', headers=headers, data=data.encode('utf-8'))
         return r
+=======
+host_port = 'http://' + host + ':' + str(port)
+>>>>>>> 9ef61d1a2d86460cb4849a633591f7044a75c9b5
 
     def search_all(self, params={}):
         """Call search API with pagination, return rows """
@@ -283,47 +311,75 @@ def rrid(request):
     h = HypothesisUtils(username=username, password=password, group=group)
     h.login()
 
-    target_uri = urlparse.parse_qs(request.body)['uri'][0]
+    target_uri = urlparse.parse_qs(request.text)['uri'][0]
     api_query = 'https://hypothes.is/api/search?limit=200&uri=' + target_uri
     obj = h.authenticated_api_query(api_query)
     rows = obj['rows']
     tags = set()
     for row in rows:
+        if row['group'] != h.group:  # api query returns unwanted groups
+            continue
+        elif row['user'] != 'acct:' + h.username + '@hypothes.is':
+            continue
         for tag in row['tags']:
             if tag.startswith('RRID'):
                 tags.add(tag)
-    html = urlparse.parse_qs(request.body)['data'][0].decode('utf-8')
-    print target_uri
+    html = urlparse.parse_qs(request.text)['data'][0]
+    print(target_uri)
 
     found_rrids = {}
     try:
-        matches = re.findall('(.{10}?)(RRID:\s*)([_\w\-:]+)([^\w].{10}?)', html)
+        matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html.replace('–','-'))
+        existing = []
         for match in matches:
+            print(match)
             prefix = match[0]
             exact = match[2]
             if 'RRID:'+exact in tags:
-                print 'skipping %s, already annotated' % exact
+                print('skipping %s, already annotated' % exact)
                 continue
+
+            new_tags = []
+            if exact in existing:
+                new_tags.append('RRID:Duplicate')
+            else:
+                existing.append(exact)
+
             found_rrids[exact] = None
             suffix = match[3]
-            print '\t' + exact
+            print('\t' + exact)
             resolver_uri = 'https://scicrunch.org/resolver/%s.xml' % exact
             r = requests.get(resolver_uri)
-            print r.status_code
+            print(r.status_code)
             xml = r.content
             found_rrids[exact] = r.status_code
-            root = etree.fromstring(xml)
-            data_elements = root.findall('data')[0]
-            s = ''
-            for data_element in data_elements:
-                name = data_element.find('name').text
-                value =data_element.find('value').text
-                s += '<p>%s: %s</p>' % (name, value)
-            s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
+            if r.status_code < 300:
+                root = etree.fromstring(xml)
+                if root.findall('error'):
+                    s = 'Resolver lookup failed.'
+                    s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRID:Unresolved'])
+                    print('ERROR')
+                else:
+                    data_elements = root.findall('data')[0]
+                    s = ''
+                    data_elements = [(e.find('name').text, e.find('value').text) for e in data_elements]  # these shouldn't duplicate
+                    citation = [(n, v) for n, v in  data_elements if n == 'Proper Citation']
+                    name = [(n, v) for n, v in  data_elements if n == 'Name']
+                    data_elements = citation + name + sorted([(n, v) for n, v in  data_elements if (n != 'Proper Citation' or n != 'Name') and v is not None])
+                    for name, value in data_elements:
+                        if (name == 'Reference' or name == 'Mentioned In Literature') and value is not None and value.startswith('<a class'):
+                            if len(value) > 500:
+                                continue  # nif-0000-30467 fix keep those pubmed links short!
+                        s += '<p>%s: %s</p>' % (name, value)
+                    s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags)
+            else:
+                s = 'Resolver lookup failed.'
+                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRID:Unresolved'])
     except:
-        print 'error: %' % exact
-        print traceback.print_exc()
+        print('error: %s' % exact)
+        print(traceback.print_exc())
 
     results = ', '.join(found_rrids.keys())
     r = Response(results)
@@ -335,12 +391,11 @@ def rrid(request):
     try:
         now = datetime.now().isoformat()[0:19].replace(':','').replace('-','')
         fname = 'rrid-%s.log' % now
-        f = open(fname,'w')
         s = 'URL: %s\n\nResults: %s\n\nCount: %s\n\nText:\n\n%s' % ( target_uri, results, len(found_rrids), html ) 
-        f.write(s.encode('utf-8'))
-        f.close()
+        with open(fname, 'wb') as f:
+            f.write(s.encode('utf-8'))
     except:
-        print traceback.print_exc()
+        print(traceback.print_exc())
 
     return r
 
@@ -365,8 +420,7 @@ if __name__ == '__main__':
     config.add_view(bookmarklet, route_name='bookmarklet')
 
     app = config.make_wsgi_app()
-    print 'host: %s, port %s' % ( host, port )
+    print('host: %s, port %s' % ( host, port ))
     server = make_server(host, port, app)
     server.serve_forever()
-
 
