@@ -89,6 +89,7 @@ def rrid(request):
     found_rrids = {}
     try:
         matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html.replace('–','-'))
+        existing = []
         for match in matches:
             print(match)
             prefix = match[0]
@@ -96,6 +97,13 @@ def rrid(request):
             if 'RRID:'+exact in tags:
                 print('skipping %s, already annotated' % exact)
                 continue
+
+            new_tags = []
+            if exact in existing:
+                new_tags.append('RRID:Duplicate')
+            else:
+                existing.append(exact)
+
             found_rrids[exact] = None
             suffix = match[3]
             print('\t' + exact)
@@ -109,7 +117,7 @@ def rrid(request):
                 if root.findall('error'):
                     s = 'Resolver lookup failed.'
                     s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=['RRID:Unresolved'])
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRID:Unresolved'])
                     print('ERROR')
                 else:
                     data_elements = root.findall('data')[0]
@@ -123,12 +131,11 @@ def rrid(request):
                             if len(value) > 500:
                                 continue  # nif-0000-30467 fix keep those pubmed links short!
                         s += '<p>%s: %s</p>' % (name, value)
-                    print(s)
                     s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s)
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags)
             else:
                 s = 'Resolver lookup failed.'
-                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags={'RRID:Unresolved'})
+                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRID:Unresolved'])
     except:
         print('error: %s' % exact)
         print(traceback.print_exc())
