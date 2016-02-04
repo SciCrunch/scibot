@@ -3,6 +3,8 @@ from __future__ import print_function
 from os import environ
 from collections import defaultdict
 from hypothesis import HypothesisUtils, HypothesisAnnotation
+from IPython import embed
+from collections import namedtuple, defaultdict
 
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
 password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
@@ -30,12 +32,38 @@ body { font-family:verdana;margin:.75in }
 </style></head>
 <body>"""
 
+rows = []
 for annotated_url in annotated_urls.keys():
     print(annotated_url)
     first = annotated_urls[annotated_url][0]
     html += '<div class="article"><a href="%s">%s</a></div>' % ( first.uri, first.uri ) 
     annos = annotated_urls[annotated_url]
-    for anno in annos:
+    if '8151' not in annotated_url:
+        continue
+    #row = namedtuple('rrid_row', ['PMID','RRID','TAG'])
+    replies = defaultdict(list)
+    for anno in annos:  # gotta build the reply structure and get pmid
+        if anno.references:
+            for reference in references:  # shouldn't there only be one???
+                replies[reference].append(anno.id)
+        PMID = [tag for tag in anno.tags if tag.startswith('PMID:')]
+        if PMID:
+            if len(PMID) > 1:
+                print(PMID)
+                raise BaseException('more than one pmid tag')
+            else:
+                PMID = PMID[0]
+
+    row = []
+    for annot in annos:
+        
+        print('id:', anno.id)
+        print('user:', anno.user)
+        print('text:', anno.exact)
+        print('tags:', anno.tags)
+        print('type:', anno.type)
+        print('references:', anno.references)
+        continue
         quote = 'quote: ' + anno.exact if anno.exact is not None else ''
         tags = 'tags: ' + ','.join(anno.tags) if len(anno.tags) else ''
         html += """
@@ -46,6 +74,8 @@ for annotated_url in annotated_urls.keys():
         <div class="text">%s</div>
         </div>
         """ % ( anno.user, quote, tags, anno.text )
+
+        row.append(
 
 html += '</body></html>'
 
