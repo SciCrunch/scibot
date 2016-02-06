@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import print_function
+import re
+import csv
 from os import environ
+from datetime import date
 from collections import defaultdict
 from hypothesis import HypothesisUtils, HypothesisAnnotation
 from IPython import embed
@@ -20,64 +23,71 @@ annotated_urls = defaultdict(list)
 for anno in annos:
     annotated_urls[anno.uri].append(anno)
 
-html = """<html>
-<head><style>
-body { font-family:verdana;margin:.75in }
-.anno { margin: 20px;
-    border-style: solid;
-    border-width: thin;
-    padding: 20px; }
-.text { margin:20px }
-.article { font-size:larger }
-</style></head>
-<body>"""
-
-rows = []
+output_rows = []
 for annotated_url in annotated_urls.keys():
-    print(annotated_url)
-    first = annotated_urls[annotated_url][0]
-    html += '<div class="article"><a href="%s">%s</a></div>' % ( first.uri, first.uri ) 
+    #print(annotated_url)
     annos = annotated_urls[annotated_url]
-    if '8151' not in annotated_url:
-        continue
-    #row = namedtuple('rrid_row', ['PMID','RRID','TAG'])
     replies = defaultdict(list)
+    PMID = []
     for anno in annos:  # gotta build the reply structure and get pmid
+        #print('id:', anno.id)
+        #print('user:', anno.user)
+        #print('exact:', anno.exact)
+        #print('text:', anno.text)
+        #print('tags:', anno.tags)
+        #print('type:', anno.type)
+        #print('references:', anno.references)
         if anno.references:
-            for reference in references:  # shouldn't there only be one???
-                replies[reference].append(anno.id)
-        PMID = [tag for tag in anno.tags if tag.startswith('PMID:')]
-        if PMID:
-            if len(PMID) > 1:
-                print(PMID)
-                raise BaseException('more than one pmid tag')
+            for reference in anno.references:  # shouldn't there only be one???
+                replies[reference].append(anno)
+        PMID.extend([tag for tag in anno.tags if tag.startswith('PMID:')])
+        #curators didn't put the pmid in as tags :(
+        if anno.text.startswith('PMID:'):  # DANGER ZONE
+            PMID.append(anno.text.strip())  # because, yep, when you don't tag sometimes you get \n :/
+
+    if PMID:
+        if len(PMID) > 1:
+            print(PMID)
+            raise BaseException('more than one pmid tag')
+        else:
+            PMID = PMID[0]
+            #print(PMID)
+    else:
+        all_tags = []
+        for a in annos:
+            all_tags.extend(a.tags)
+        print('NO PMID FOR', annotated_url)
+        print(set([a.user for a in annos]))
+        print(all_tags)
+        PMID = annotated_url
+
+    RRIDs = defaultdict(list)
+    for anno in annos:
+        RRID = None
+        additional = []
+        for tag in anno.tags:
+            if re.match('RRID:.+[0-9]+', tag):  # ARRRRGGGGHHHHHHH ARRRRGGHHHH
+                if RRID is not None:
+                    raise BaseException('MORE THAN ONE RRID PER ENTRY!')
+                RRID = tag  # :/ this works for now but ARHGHHGHASFHAS
             else:
-                PMID = PMID[0]
+                additional.append(tag)  # eg Unresolved
 
-    row = []
-    for annot in annos:
-        
-        print('id:', anno.id)
-        print('user:', anno.user)
-        print('text:', anno.exact)
-        print('tags:', anno.tags)
-        print('type:', anno.type)
-        print('references:', anno.references)
-        continue
-        quote = 'quote: ' + anno.exact if anno.exact is not None else ''
-        tags = 'tags: ' + ','.join(anno.tags) if len(anno.tags) else ''
-        html += """
-        <div class="anno">
-        <div>user: %s</div>
-        <div>%s</div>
-        <div>%s</div>
-        <div class="text">%s</div>
-        </div>
-        """ % ( anno.user, quote, tags, anno.text )
+        if RRID is not None:
+            RRIDs[RRID].extend(additional)
+            if anno.id in replies:
+                for r_anno in replies[anno.id]:
+                    RRIDs[RRID].extend(r_anno.tags)  # not worrying about the text here
 
-        row.append(
+    for rrid, more in RRIDs.items():
+        for val in set(more):  # cull dupes
+            row = [PMID, rrid, val, annotated_url]
+            print(row)
+            output_rows.append(row)
 
-html += '</body></html>'
 
-with open('rrid.html','wb') as f:
-    f.write(html.encode('utf-8'))
+DATE = date.today().strftime('%Y-%m-%d')
+with open('RRID-data-%s.csv' % DATE, 'wt') as f:
+    writer = csv.writer(f, lineterminator='\n')
+    writer.writerows(sorted(output_rows))
+
