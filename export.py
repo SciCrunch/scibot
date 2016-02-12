@@ -43,7 +43,10 @@ for annotated_url in annotated_urls.keys():
         PMID.extend([tag for tag in anno.tags if tag.startswith('PMID:')])
         #curators didn't put the pmid in as tags :(
         if anno.text.startswith('PMID:'):  # DANGER ZONE
-            PMID.append(anno.text.strip())  # because, yep, when you don't tag sometimes you get \n :/
+            if '_' in anno.text:
+                print('PMIDS DONT HAVE UNDERSCORES PROBABLY CURATION BUG', anno.text)
+            else:
+                PMID.append(anno.text.strip())  # because, yep, when you don't tag sometimes you get \n :/
 
     if PMID:
         if len(PMID) > 1:
@@ -72,6 +75,12 @@ for annotated_url in annotated_urls.keys():
                 RRID = tag  # :/ this works for now but ARHGHHGHASFHAS
             else:
                 additional.append(tag)  # eg Unresolved
+
+            if tag == 'RRIDCUR:Missing':  # fix for bad curation process
+                maybe_rrid = anno.text.strip()
+                if re.match('RRID:.+[0-9]+', maybe_rrid):  # ARRRRGGGGHHHHHHH ARRRRGGHHHH
+                    RRID = maybe_rrid  # RRIDCUR:Missing was already added above
+
 
         if RRID is not None:
             RRIDs[RRID].extend(additional)
