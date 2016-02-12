@@ -89,10 +89,13 @@ for annotated_url in annotated_urls.keys():
                     RRIDs[RRID].extend(r_anno.tags)  # not worrying about the text here
 
     for rrid, more in RRIDs.items():
-        for val in set(more):  # cull dupes
-            row = [PMID, rrid, val, annotated_url]
-            print(row)
+        if not more:
+            row = [PMID, rrid, None, annotated_url]
             output_rows.append(row)
+        else:
+            for val in set(more):  # cull dupes
+                row = [PMID, rrid, val, annotated_url]
+                output_rows.append(row)
 
 
 DATE = date.today().strftime('%Y-%m-%d')
