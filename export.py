@@ -40,7 +40,7 @@ for annotated_url in annotated_urls.keys():
         if anno.references:
             for reference in anno.references:  # shouldn't there only be one???
                 replies[reference].append(anno)
-        PMID.extend([tag for tag in anno.tags if tag.startswith('PMID:')])
+        PMID.extend([tag for tag in anno.tags if tag.startswith('PMID:') and '_' not in tag])  # bad tags with PMID:SCR_
         #curators didn't put the pmid in as tags :(
         if anno.text.startswith('PMID:'):  # DANGER ZONE
             if '_' in anno.text:
