@@ -44,8 +44,21 @@ The found RRIDs are logged to timestamped files, along with the text of the arti
 3. `sudo pip install requests pyramid lxml`
 4. clone this repository
 5. change host and port for external http access
-6. `unset HISTFILE`
-7. `export RRIDBOT_USERNAME=someusername`
-8. `export RRIDBOT_PASSWORD=somepassword`
-9. create a screen session
-10. in the screen session run `sudo -E ~/rrid/rrid.py` in the folder where you want to save the log files (-E preserves the environment variables)
+6. `export RRIDBOT_USERNAME=someusername`
+7. `export RRIDBOT_GROUP=somegroupname`
+8. `unset HISTFILE`
+9. `export RRIDBOT_PASSWORD=somepassword`
+10. create a screen session
+11. in the screen session run `sudo -E ~/rrid/rrid.py` in the folder where you want to save the log files (-E preserves the environment variables)
+
+## Retrieving data
+
+Use export.py to dump a spreadsheet of RRIDs mined from the data.
+In the folder for this git repository run the following commands.
+
+0. `export RRIDBOT_USERNAME=someusername`
+1. `export RRIDBOT_GROUP=somegroupname`
+2. `unset HISTFILE`
+3. `export RRIDBOT_PASSWORD=somepassword`
+4. `python export.py`
+
