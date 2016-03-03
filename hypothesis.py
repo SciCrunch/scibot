@@ -10,16 +10,18 @@ except ImportError:
 
 class HypothesisUtils:
     """ services for authenticating, searching, creating annotations """
-    def __init__(self, username='username', password=None, limit=None, max_results=None, domain=None, group=None):
+    def __init__(self, username=None, token=None, limit=None, max_results=None, domain=None, group=None):
         if domain is None:
             self.domain = 'hypothes.is'
         else:
             self.domain = domain
+        if username is not None:
+            self.username = username
+        if token is not None:
+            self.token = token
         self.app_url = 'https://%s/app' % self.domain
         self.api_url = 'https://%s/api' % self.domain
-        self.query_url = 'https://%s/api/search?{query}' % self.domain
-        self.username = username
-        self.password = password
+        self.query_url_template = 'https://%s/api/search?{query}' % self.domain
         self.group = group if group is not None else '__world__'
         self.single_page_limit = 200 if limit is None else limit  # per-page, the api honors limit= up to (currently) 200
         self.multi_page_limit = 200 if max_results is None else max_results  # limit for paginated results
@@ -30,25 +32,10 @@ class HypothesisUtils:
                 "admin":  ['acct:' + self.username + '@hypothes.is']
                 }
 
-    def login(self):
-        """Request an assertion, exchange it for an auth token."""
-        # https://github.com/rdhyee/hypothesisapi
-        r = requests.get(self.app_url)
-        cookies = r.cookies
-        payload = {"username":self.username,"password":self.password}
-        self.csrf_token = cookies['XSRF-TOKEN']
-        data = json.dumps(payload)
-        headers = {'content-type':'application/json;charset=UTF-8', 'x-csrf-token': self.csrf_token}
-        r = requests.post(url=self.app_url + "?__formid__=login", data=data, cookies=cookies, headers=headers)
-        url = self.api_url + "/token?" + urlencode({'assertion':self.csrf_token})
-        r = (requests.get(url=url,
-                         cookies=cookies, headers=headers))
-        self.token = r.content.decode('utf-8')
-
-    def authenticated_api_query(self, url=None):
+    def authenticated_api_query(self, query_url=None):
         try:
            headers = {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json;charset=utf-8' }
-           r = requests.get(url, headers=headers)
+           r = requests.get(query_url, headers=headers)
            obj = json.loads(r.text)
            return obj
         except:
@@ -81,10 +68,8 @@ class HypothesisUtils:
         return payload
 
     def create_annotation_with_target_using_only_text_quote(self, url=None, prefix=None, 
-               exact=None, suffix=None, text=None, tags=None):
+               exact=None, suffix=None, text=None, tags=None, tag_prefix=None):
         """Call API with token and payload, create annotation (using only text quote)"""
-        tags = [] if tags is None else tags
-        tags += ['RRID:' + exact]
         payload = self.make_annotation_payload_with_target_using_only_text_quote(url, prefix, exact, suffix, text, tags)
         try:
             r = self.post_annotation(payload)
@@ -104,8 +89,8 @@ class HypothesisUtils:
         params['offset'] = 0
         params['limit'] = self.single_page_limit
         while True:
-            h_url = self.query_url.format(query=urlencode(params, True))
-            obj = self.authenticated_api_query(h_url)
+            query_url = self.query_url_template.format(query=urlencode(params, True))
+            obj = self.authenticated_api_query(query_url)
             rows = obj['rows']
             row_count = len(rows)
             if 'replies' in obj:
