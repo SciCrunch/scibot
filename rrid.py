@@ -2,6 +2,10 @@
 from __future__ import print_function
 import requests, re, traceback, pyramid
 try:
+    from urllib.parse import urlencode
+except ImportError:
+    from urllib import urlencode
+try:
     import urlparse
 except ImportError:  # python3
     from urllib import parse as urlparse
@@ -10,9 +14,10 @@ from datetime import datetime
 from lxml import etree
 from hypothesis import HypothesisUtils
 
-username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
-password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
+api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API dev token
+username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
 group = environ.get('RRIDBOT_GROUP', '__world__')
+
 print(username, group)  # sanity check
 
 prod_username = 'scibot'  # nasty hardcode
@@ -67,12 +72,12 @@ def rrid(request):
         response.status_int = 204
         return response
 
-    h = HypothesisUtils(username=username, password=password, group=group)
-    h.login()
+    h = HypothesisUtils(username=username, token=api_token, group=group)
 
     target_uri = urlparse.parse_qs(request.text)['uri'][0]
-    api_query = 'https://hypothes.is/api/search?limit=200&uri=' + target_uri
-    obj = h.authenticated_api_query(api_query)
+    params = { 'limit':200, 'uri':target_uri }
+    query_url = h.query_url_template.format(query=urlencode(params, True))
+    obj = h.authenticated_api_query(query_url)
     rows = obj['rows']
     tags = set()
     for row in rows:
@@ -88,7 +93,8 @@ def rrid(request):
 
     found_rrids = {}
     try:
-        matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html.replace('–','-'))
+        #matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html.replace('ï¿½','-'))
+        matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html)
         existing = []
         for match in matches:
             print(match)
@@ -132,12 +138,11 @@ def rrid(request):
                                 continue  # nif-0000-30467 fix keep those pubmed links short!
                         s += '<p>%s: %s</p>' % (name, value)
                     s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags)
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRID:'+exact])
             else:
                 s = 'Resolver lookup failed.'
                 r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRID:Unresolved'])
     except:
-        print('error: %s' % exact)
         print(traceback.print_exc())
 
     results = ', '.join(found_rrids.keys())
