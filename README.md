@@ -1,4 +1,4 @@
-# RRID (aka NIFbot)
+# RRID (aka SciBot)
 
 A tool and companion service used to:
 
@@ -9,20 +9,20 @@ A tool and companion service used to:
 ## Getting Started
 
 * Create the Hypothesis account under which annotations will be created
-* Specify HOST, PORT, USERNAME, and PASSWORD 
+* Specify HOST, PORT, API TOKEN, and USERNAME
 * python rrid.py
 * note and install missing libraries
 * python rrid.py
 
 ## Capturing the bookmarklet
 
-Visit http://HOST:8081/bookmarklet which produces this page:
+Visit http://HOST:PORT/bookmarklet which produces this page:
 
   To install the bookmarklet, drag this link -- rrid -- to your bookmarks bar.
 
   If you need to copy/paste the bookmarklet's code into a bookmarklet, it's here:
 
-  javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','http://localhost:8081/rrid',true);xhr.setRequestHeader('Content-type','application/x-www-form-urlencoded');xhr.setRequestHeader('Access-Control-Allow-Origin','*');xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());
+  javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','http://localhost:8080/rrid',true);xhr.setRequestHeader('Content-type','application/x-www-form-urlencoded');xhr.setRequestHeader('Access-Control-Allow-Origin','*');xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());
 
 ## Using the bookmarklet
 
