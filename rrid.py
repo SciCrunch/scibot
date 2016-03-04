@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: UTF-8 -*-
 from __future__ import print_function
 import requests, re, traceback, pyramid
 try:
@@ -93,8 +94,7 @@ def rrid(request):
 
     found_rrids = {}
     try:
-        #matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html.replace('�','-'))
-        matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html)
+        matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html.replace('–','-'))
         existing = []
         for match in matches:
             print(match)
