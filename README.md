@@ -1,4 +1,4 @@
-# RRID (aka NIFbot)
+# RRID (aka SciBot)
 
 A tool and companion service used to:
 
@@ -9,20 +9,20 @@ A tool and companion service used to:
 ## Getting Started
 
 * Create the Hypothesis account under which annotations will be created
-* Specify HOST, PORT, USERNAME, and PASSWORD 
+* Specify HOST, PORT, API TOKEN, and USERNAME
 * python rrid.py
 * note and install missing libraries
 * python rrid.py
 
 ## Capturing the bookmarklet
 
-Visit http://HOST:8081/bookmarklet which produces this page:
+Visit http://HOST:PORT/bookmarklet which produces this page:
 
   To install the bookmarklet, drag this link -- rrid -- to your bookmarks bar.
 
   If you need to copy/paste the bookmarklet's code into a bookmarklet, it's here:
 
-  javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','http://localhost:8081/rrid',true);xhr.setRequestHeader('Content-type','application/x-www-form-urlencoded');xhr.setRequestHeader('Access-Control-Allow-Origin','*');xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());
+  javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','http://localhost:8080/rrid',true);xhr.setRequestHeader('Content-type','application/x-www-form-urlencoded');xhr.setRequestHeader('Access-Control-Allow-Origin','*');xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());
 
 ## Using the bookmarklet
 
@@ -47,7 +47,7 @@ The found RRIDs are logged to timestamped files, along with the text of the arti
 6. `export RRIDBOT_USERNAME=someusername`
 7. `export RRIDBOT_GROUP=somegroupname`
 8. `unset HISTFILE`
-9. `export RRIDBOT_PASSWORD=somepassword`
+9. `export RRIDBOT_API_TOKEN=sometoken`
 10. create a screen session
 11. in the screen session run `sudo -E ~/rrid/rrid.py` in the folder where you want to save the log files (-E preserves the environment variables)
 
@@ -59,6 +59,6 @@ In the folder for this git repository run the following commands.
 0. `export RRIDBOT_USERNAME=someusername`
 1. `export RRIDBOT_GROUP=somegroupname`
 2. `unset HISTFILE`
-3. `export RRIDBOT_PASSWORD=somepassword`
+3. `export RRIDBOT_API_TOKEN=sometoken`
 4. `python export.py`
 

@@ -9,13 +9,13 @@ from hypothesis import HypothesisUtils, HypothesisAnnotation
 from IPython import embed
 from collections import namedtuple, defaultdict
 
-username = environ.get('RRIDBOT_USERNAME', 'USERNAME')  # Hypothesis account
-password = environ.get('RRIDBOT_PASSWORD', 'PASSWORD')
+api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
+username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
 group = environ.get('RRIDBOT_GROUP', '__world__')
-print(username, group)  # sanity check
+
+print(api_token, username, group)  # sanity check
     
-h = HypothesisUtils(username=username, password=password, group=group, max_results=5000)
-h.login()
+h = HypothesisUtils(username=username, token=api_token, group=group, max_results=5000)
 params = {'group' : h.group }
 rows = h.search_all(params)
 annos = [HypothesisAnnotation(row) for row in rows]
