@@ -9,6 +9,7 @@ A tool and companion service used to:
 ## Getting Started
 
 * Create the Hypothesis account under which annotations will be created
+* Generate an api token at https://hypothes.is/profile/developer
 * Specify HOST, PORT, API TOKEN, and USERNAME
 * python rrid.py
 * note and install missing libraries
