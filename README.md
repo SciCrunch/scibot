@@ -50,7 +50,7 @@ The found RRIDs are logged to timestamped files, along with the text of the arti
 8. `unset HISTFILE`
 9. `export RRIDBOT_API_TOKEN=sometoken`
 10. create a screen session
-11. in the screen session run `sudo -E ~/rrid/rrid.py` in the folder where you want to save the log files (-E preserves the environment variables)
+11. in the screen session run `sudo -E ~/scibot/rrid.py` in the folder where you want to save the log files (-E preserves the environment variables)
 
 ## Retrieving data
 
