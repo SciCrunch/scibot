@@ -64,9 +64,9 @@ def export_impl():
             all_tags = []
             for a in annos:
                 all_tags.extend(a.tags)
-            print('NO PMID FOR', annotated_url)
-            print(set([a.user for a in annos]))
-            print(all_tags)
+            #print('NO PMID FOR', annotated_url)
+            #print(set([a.user for a in annos]))
+            #print(all_tags)
             PMID = annotated_url
 
         RRIDs = defaultdict(list)
@@ -110,7 +110,6 @@ def main():
     with open('RRID-data-%s.csv' % DATE, 'wt') as f:
         writer = csv.writer(f, lineterminator='\n')
         writer.writerows(sorted(output_rows))
-    embed()
 
 if __name__ == '__main__':
     main()
