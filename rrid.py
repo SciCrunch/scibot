@@ -172,7 +172,7 @@ def export(request):
     output_rows, DATE = export_impl()    
     data = StringIO()
     writer = csv.writer(data)
-    writer.writerows(output_rows)
+    writer.writerows(sorted(output_rows))
 
     r = Response(gzip.compress(data.getvalue().encode()))
     r.content_type = 'text/csv'
