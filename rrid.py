@@ -11,9 +11,13 @@ try:
 except ImportError:  # python3
     from urllib import parse as urlparse
 from os import environ
+from io import StringIO
 from datetime import datetime
+import csv
+import gzip
 from lxml import etree
 from hypothesis import HypothesisUtils
+from export import export_impl
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API dev token
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
@@ -163,6 +167,22 @@ def rrid(request):
 
     return r
 
+def export(request):
+    print('starting export')
+    output_rows, DATE = export_impl()    
+    data = StringIO()
+    writer = csv.writer(data)
+    writer.writerows(output_rows)
+
+    r = Response(gzip.compress(data.getvalue().encode()))
+    r.content_type = 'text/csv'
+    r.headers.update({
+        'Content-Disposition':'attachment;filename = RRID-data-%s.csv' % DATE,
+        'Content-Encoding':'gzip'
+        })
+
+    return r
+
 if __name__ == '__main__':
 
     from wsgiref.simple_server import make_server
@@ -176,6 +196,9 @@ if __name__ == '__main__':
 
     config.add_route('bookmarklet', '/bookmarklet')
     config.add_view(bookmarklet, route_name='bookmarklet')
+
+    config.add_route('export', '/export')
+    config.add_view(export, route_name='export')
 
     app = config.make_wsgi_app()
     print('host: %s, port %s' % ( host, port ))
