@@ -6,7 +6,6 @@ from os import environ
 from datetime import date
 from collections import defaultdict
 from hypothesis import HypothesisUtils, HypothesisAnnotation
-from IPython import embed
 from collections import namedtuple, defaultdict
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
