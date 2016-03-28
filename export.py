@@ -109,8 +109,6 @@ def export_impl():
                 #USERs[RRID] = anno.user
                 if RRID not in CITEs:
                     if anno.text:
-                        print()
-                        print(anno.text)
                         if 'Proper Citation:' in anno.text:
                             CITEs[RRID] = anno.text.split('Proper Citation:')[1].strip().split('<',1)[0]
 
