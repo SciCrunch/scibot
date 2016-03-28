@@ -6,8 +6,8 @@ from os import environ
 from datetime import date
 from collections import defaultdict
 from collections import namedtuple, defaultdict
-import requests
-from lxml import etree
+#import requests
+#from lxml import etree
 from hypothesis import HypothesisUtils, HypothesisAnnotation
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
