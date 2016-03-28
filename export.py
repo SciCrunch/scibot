@@ -15,7 +15,7 @@ group = environ.get('RRIDBOT_GROUP', '__world__')
 print(api_token, username, group)  # sanity check
 
 def export_impl():
-    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=5000)
+    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=50000)
     params = {'group' : h.group }
     rows = h.search_all(params)
     annos = [HypothesisAnnotation(row) for row in rows]
@@ -69,6 +69,7 @@ def export_impl():
             PMID = annotated_url
 
         RRIDs = defaultdict(list)
+        EXACTs = {}
         for anno in annos:
             RRID = None
             additional = []
@@ -85,20 +86,21 @@ def export_impl():
                     if re.match('RRID:.+[0-9]+', maybe_rrid):  # ARRRRGGGGHHHHHHH ARRRRGGHHHH
                         RRID = maybe_rrid  # RRIDCUR:Missing was already added above
 
-
             if RRID is not None:
+                EXACTs[RRID] = anno.exact.strip() if anno.exact else ''
                 RRIDs[RRID].extend(additional)
                 if anno.id in replies:
                     for r_anno in replies[anno.id]:
                         RRIDs[RRID].extend(r_anno.tags)  # not worrying about the text here
 
+        print(EXACTs)
         for rrid, more in RRIDs.items():
             if not more:
-                row = [PMID, rrid, None, annotated_url]
+                row = [PMID, rrid, '', annotated_url, EXACTs[rrid]]
                 output_rows.append(row)
             else:
                 for val in set(more):  # cull dupes
-                    row = [PMID, rrid, val, annotated_url]
+                    row = [PMID, rrid, val, annotated_url, EXACTs[rrid]]
                     output_rows.append(row)
 
     DATE = date.today().strftime('%Y-%m-%d')
