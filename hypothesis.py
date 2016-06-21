@@ -122,9 +122,9 @@ class HypothesisAnnotation:
                 self.links = row['document']['link']
                 for link in self.links:
                     self.uri = link['href']
-                    if self.uri.encode('utf-8').startswith('urn:') == False:
+                    if self.uri.encode('utf-8').startswith(b'urn:') == False:
                         break
-            if self.uri.encode('utf-8').startswith('urn:') and 'filename' in row['document']:
+            if self.uri.encode('utf-8').startswith(b'urn:') and 'filename' in row['document']:
                 self.uri = row['document']['filename']
 
         if 'document' in row and 'title' in row['document']:
