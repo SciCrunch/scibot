@@ -28,6 +28,14 @@ def get_proper_citation(xml):
 
     return proper_citation
 
+def fix_trailing_slash(annotated_urls):
+    for key in [k for k in annotated_urls.keys()]:
+        if key.endswith('/'):
+            new_key = key.rstrip('/')
+            print(new_key)
+            if new_key in annotated_urls:
+                annotated_urls[key].extend(annotated_urls.pop(new_key))
+
 def export_impl():
     h = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
     params = {'group' : h.group }
@@ -36,6 +44,8 @@ def export_impl():
     annotated_urls = defaultdict(list)
     for anno in annos:
         annotated_urls[anno.uri].append(anno)
+
+    fix_trailing_slash(annotated_urls)
 
     output_rows = []
     for annotated_url in annotated_urls.keys():
