@@ -45,7 +45,6 @@ class HypothesisUtils:
         """Create JSON payload for API call."""
         if tags == None:
             tags = []
-        url = url.rstrip('//')
         payload = {
             "uri": url,
             "user": 'acct:' + self.username + '@hypothes.is',
