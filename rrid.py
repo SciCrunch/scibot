@@ -22,10 +22,11 @@ from export import export_impl
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API dev token
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
 group = environ.get('RRIDBOT_GROUP', '__world__')
+group2 = environ.get('RRIDBOT_GROUP2', '__world__')
 
-print(username, group)  # sanity check
+print(username, group, group2)  # sanity check
 
-prod_username = 'scibot'  # nasty hardcode
+prod_username = '' #'scibot'  # nasty hardcode
 
 if username == prod_username:
     host = '0.0.0.0'
@@ -59,7 +60,34 @@ def bookmarklet(request):
     r.content_type = 'text/html'
     return r
 
-def rrid(request):   
+def validatebookmarklet(request):
+    """ Return text of the RRID bookmarklet """
+    text = """javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','%s/validaterrid',true);xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");xhr.setRequestHeader("Access-Control-Allow-Origin","*");xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());""" % request.application_url
+    text = text.replace('"',"'")
+    html = """<html>
+    <head>
+    <style>
+    body { font-family: verdana; margin:.75in }
+    </style>
+    <title>validaterrid bookmarklet</title></head>
+    <body>
+    <p>To install the bookmarklet, drag this link -- <a href="%s">validaterrid</a> -- to your bookmarks bar.</p>
+    <p>If you need to copy/paste the bookmarklet's code into a bookmarklet, it's here:</p>
+    <p>%s</p>
+    </body>
+    </html>
+    """ % ( text, text )
+    r = Response(html)
+    r.content_type = 'text/html'
+    return r
+
+def rrid(request):
+    return rrid_wrapper(request, username, api_token, group, 'logs/rrid/')
+
+def validaterrid(request):
+    return rrid_wrapper(request, username, api_token, group2, 'logs/validaterrid/')
+
+def rrid_wrapper(request, username, api_token, group, logloc):
     """ Receive an article, parse RRIDs, resolve them, create annotations, log results """
     if  request.method == 'OPTIONS':
         response = Response()
@@ -98,12 +126,12 @@ def rrid(request):
 
     found_rrids = {}
     try:
-        matches = re.findall('(.{0,10})(RRID:\s*)([_\w\-:]+)([^\w].{0,10})', html.replace('–','-'))
+        matches = re.findall('(.{0,10})(RRID(:|\)*,)\s*)(\w+[_\-:]+[\w\-]+)([^\w].{0,10})', html.replace('–','-'))
         existing = []
         for match in matches:
             print(match)
             prefix = match[0]
-            exact = match[2]
+            exact = match[3]
             if 'RRID:'+exact in tags:
                 print('skipping %s, already annotated' % exact)
                 continue
@@ -115,7 +143,7 @@ def rrid(request):
                 existing.append(exact)
 
             found_rrids[exact] = None
-            suffix = match[3]
+            suffix = match[4]
             print('\t' + exact)
             resolver_uri = 'https://scicrunch.org/resolver/%s.xml' % exact
             r = requests.get(resolver_uri)
@@ -158,7 +186,7 @@ def rrid(request):
 
     try:
         now = datetime.now().isoformat()[0:19].replace(':','').replace('-','')
-        fname = 'rrid-%s.log' % now
+        fname = logloc + 'rrid-%s.log' % now
         s = 'URL: %s\n\nResults: %s\n\nCount: %s\n\nText:\n\n%s' % ( target_uri, results, len(found_rrids), html ) 
         with open(fname, 'wb') as f:
             f.write(s.encode('utf-8'))
@@ -194,8 +222,14 @@ if __name__ == '__main__':
     config.add_route('rrid', '/rrid')
     config.add_view(rrid, route_name='rrid')
 
+    config.add_route('validaterrid', 'validaterrid')
+    config.add_view(validaterrid, route_name='validaterrid')
+
     config.add_route('bookmarklet', '/bookmarklet')
     config.add_view(bookmarklet, route_name='bookmarklet')
+
+    config.add_route('validatebookmarklet', '/validatebookmarklet')
+    config.add_view(validatebookmarklet, route_name='validatebookmarklet')
 
     config.add_route('export', '/export')
     config.add_view(export, route_name='export')
