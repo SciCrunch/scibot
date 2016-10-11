@@ -27,7 +27,7 @@ group2 = environ.get('RRIDBOT_GROUP2', '__world__')
 
 print(username, group, group2)  # sanity check
 
-prod_username = '' #'scibot'  # nasty hardcode
+prod_username = 'scibot'  # nasty hardcode
 
 if username == prod_username:
     host = '0.0.0.0'
