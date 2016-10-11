@@ -14,6 +14,7 @@ from os import environ
 from io import StringIO
 from datetime import datetime
 import csv
+import ssl
 import gzip
 from lxml import etree
 from hypothesis import HypothesisUtils
@@ -30,18 +31,18 @@ prod_username = '' #'scibot'  # nasty hardcode
 
 if username == prod_username:
     host = '0.0.0.0'
-    port = 80
+    port = 443
 
 else: 
     print('no login detected, running on localhost only')
     host = 'localhost'
-    port = 8080
+    port = 4443
 
-host_port = 'http://' + host + ':' + str(port)
+host_port = 'https://' + host + ':' + str(port)
 
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
-    text = """javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','%s/rrid',true);xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");xhr.setRequestHeader("Access-Control-Allow-Origin","*");xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());""" % request.application_url
+    text = """javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','%s/rrid',true);xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");xhr.setRequestHeader("Access-Control-Allow-Origin","*");xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());""" % request.application_url.replace('http:','https:')  # pyramid is blind to ssl...
     text = text.replace('"',"'")
     html = """<html>
     <head>
@@ -62,7 +63,7 @@ def bookmarklet(request):
 
 def validatebookmarklet(request):
     """ Return text of the RRID bookmarklet """
-    text = """javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','%s/validaterrid',true);xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");xhr.setRequestHeader("Access-Control-Allow-Origin","*");xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());""" % request.application_url
+    text = """javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','%s/validaterrid',true);xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");xhr.setRequestHeader("Access-Control-Allow-Origin","*");xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());""" % request.application_url.replace('http:','https:')  # pyramid is blind to ssl...
     text = text.replace('"',"'")
     html = """<html>
     <head>
@@ -238,6 +239,7 @@ if __name__ == '__main__':
     app = config.make_wsgi_app()
     print('host: %s, port %s' % ( host, port ))
     server = make_server(host, port, app)
+    # openssl req -new -x509 -keyout scibot-self-sign-temp.pem -out scibot-self-sign-temp.pem -days 365 -nodes
+    server.socket = ssl.wrap_socket(server.socket, certfile='./scibot-self-sign-temp.pem', server_side=True)
     server.serve_forever()
-
 
