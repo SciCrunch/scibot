@@ -16,9 +16,10 @@ from datetime import datetime
 import csv
 import ssl
 import gzip
+import json
 from lxml import etree
 from hypothesis import HypothesisUtils
-from export import export_impl
+from export import export_impl, export_json_impl
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API dev token
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
@@ -198,7 +199,7 @@ def rrid_wrapper(request, username, api_token, group, logloc):
     return r
 
 def export(request):
-    print('starting export')
+    print('starting csv export')
     output_rows, DATE = export_impl()    
     data = StringIO()
     writer = csv.writer(data)
@@ -212,6 +213,20 @@ def export(request):
         })
 
     return r
+
+def export_json(request):
+    print('starting json export')
+    output_json, DATE = export_json_impl()    
+    data = json.dumps(output_json, sort_keys=True, indent=4)
+
+    r = Response(gzip.compress(data.encode()))
+    r.content_type = 'application/json'
+    r.headers.update({
+        'Content-Encoding':'gzip'
+        })
+
+    return r
+
 
 if __name__ == '__main__':
 
@@ -235,6 +250,9 @@ if __name__ == '__main__':
 
     config.add_route('export', '/export')
     config.add_view(export, route_name='export')
+
+    config.add_route('export.json', '/export.json')
+    config.add_view(export_json, route_name='export.json')
 
     app = config.make_wsgi_app()
     print('host: %s, port %s' % ( host, port ))
