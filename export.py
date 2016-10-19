@@ -155,11 +155,65 @@ def export_impl():
     DATE = date.today().strftime('%Y-%m-%d')
     return output_rows, DATE
 
+bad_tags = {
+    'RRID:Incorrect',
+    'RRID:InsufficientMetadata',
+    'RRID:Missing',
+    'RRID:Unrecognized',
+    'RRID:Unresolved',
+    'RRID:Validated',
+    'RRID:Duplicate',
+}
+
+def export_json_impl():
+    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
+    params = {'group' : h.group }
+    rows = h.search_all(params)
+    annos = [HypothesisAnnotation(row) for row in rows]
+
+    # clean up bugs from old curation workflow
+    for anno in annos:
+        if anno.tags:
+            new_tags = []
+            for tag in anno.tags:
+                if tag in bad_tags:
+                    new_tags.append(tag.replace('RRID:', 'RRIDCUR:'))  # scibot made a mistake early, might be able to correct tags in bulk someday
+                else:
+                    new_tags.append(tag)  # horribly inefficient...
+            anno.tags = new_tags
+
+        if anno.text.startswith('RRID:'):  # catch cases where the RRID was put in text instead of in tags
+            if 'RRIDCUR:Missing' in anno.tags or 'RRIDCUR:Unrecognized' in anno.tags:
+                rtag = anno.text.split(None,1)[0]  # trap for cases where there is more text after an RRID...
+                if rtag not in anno.tags:
+                    anno.tags.append(rtag)
+                    print('TEXT ISSUE for %s at https://hyp.is/%s' % (anno.user, anno.id))
+        elif anno.exact and anno.exact.startswith('RRID:'):  # this needs to go second in case of RRIDCUR:Incorrect
+            if anno.exact.startswith('RRID: '):  # deal with nospace first
+                rtag = anno.exact.replace('RRID: ', 'RRID:')
+            else:
+                rtag = anno.exact
+            rtag = rtag.split(None,1)[0]  # trap more
+            if rtag not in anno.tags:
+                if anno.user == 'scibot' and len(anno.tags) == 1 and anno.tags[0].startswith('RRID:RRID:'):  # FIXME HACK
+                    anno.tags = [rtag]
+                else:
+                    pass  # anything else we detect in the data doesn't need to be corrected or used to fix tags
+
+    output_json = [anno.__dict__ for anno in annos]
+    DATE = date.today().strftime('%Y-%m-%d')
+    return output_json, DATE
+
 def main():
     output_rows, DATE = export_impl()
     with open('RRID-data-%s.csv' % DATE, 'wt') as f:
         writer = csv.writer(f, lineterminator='\n')
         writer.writerows(sorted(output_rows))
+
+    import json
+    output_json, DATE = export_json_impl()
+    with open('RRID-data-%s.json' % DATE, 'wt') as f:
+        json.dump(output_json, f, sort_keys=True, indent=4)
 
 if __name__ == '__main__':
     main()
