@@ -31,6 +31,7 @@ class HypothesisUtils:
                 "delete": ['acct:' + self.username + '@hypothes.is'],
                 "admin":  ['acct:' + self.username + '@hypothes.is']
                 }
+        self.ssl_retry = 0
 
     def authenticated_api_query(self, query_url=None):
         try:
@@ -38,8 +39,21 @@ class HypothesisUtils:
            r = requests.get(query_url, headers=headers)
            obj = json.loads(r.text)
            return obj
-        except:
+        except requests.exceptions.SSLError as e:
+            if self.ssl_retry < 5:
+                self.ssl_retry += 1
+                print('Ssl error at level', self.ssl_retry, 'retrying....')
+                return self.authenticated_api_query(query_url)
+            else:
+                self.ssl_retry = 0
+                print(e)
+                print(traceback.print_exc())
+                return {'ERROR':True}
+        except BaseException as e:
+            print(e)
+            #print('Request, status code:', r.status_code)  # this causes more errors...
             print(traceback.print_exc())
+            return {'ERROR':True}
 
     def make_annotation_payload_with_target_using_only_text_quote(self, url, prefix, exact, suffix, text, tags):
         """Create JSON payload for API call."""
