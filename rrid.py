@@ -258,6 +258,6 @@ if __name__ == '__main__':
     print('host: %s, port %s' % ( host, port ))
     server = make_server(host, port, app)
     # openssl req -new -x509 -keyout scibot-self-sign-temp.pem -out scibot-self-sign-temp.pem -days 365 -nodes
-    server.socket = ssl.wrap_socket(server.socket, certfile='./scibot-self-sign-temp.pem', server_side=True)
+    server.socket = ssl.wrap_socket(server.socket, keyfile='/etc/letsencrypt/live/scibot.scicrunch.io/privkey.pem', certfile='/etc/letsencrypt/live/scibot.scicrunch.io/fullchain.pem', server_side=True)
     server.serve_forever()
 
