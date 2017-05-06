@@ -79,7 +79,8 @@ def export_impl():
                     PMID = PMID[0]
                     print('WARNING: more than one pmid tag')
                 else:
-                    raise BaseException('more than one pmid tag')
+                    print("raise BaseException('more than one pmid tag')")  # irritating
+                    PMID = PMID[0]  # FIXME
             else:
                 PMID = PMID[0]
                 #print(PMID)

@@ -48,12 +48,12 @@ class HypothesisUtils:
                 self.ssl_retry = 0
                 print(e)
                 print(traceback.print_exc())
-                return {'ERROR':True}
+                return {'ERROR':True, 'rows':tuple()}
         except BaseException as e:
             print(e)
             #print('Request, status code:', r.status_code)  # this causes more errors...
             print(traceback.print_exc())
-            return {'ERROR':True}
+            return {'ERROR':True, 'rows':tuple()}
 
     def make_annotation_payload_with_target_using_only_text_quote(self, url, prefix, exact, suffix, text, tags):
         """Create JSON payload for API call."""
