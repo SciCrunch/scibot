@@ -18,6 +18,7 @@ import ssl
 import gzip
 import json
 from lxml import etree
+from pyramid.response import Response
 from hypothesis import HypothesisUtils
 from export import export_impl, export_json_impl
 
@@ -227,12 +228,11 @@ def export_json(request):
 
     return r
 
+def main(local=False):
 
-if __name__ == '__main__':
 
     from wsgiref.simple_server import make_server
     from pyramid.config import Configurator
-    from pyramid.response import Response
 
     config = Configurator()
 
@@ -255,9 +255,14 @@ if __name__ == '__main__':
     config.add_view(export_json, route_name='export.json')
 
     app = config.make_wsgi_app()
-    print('host: %s, port %s' % ( host, port ))
-    server = make_server(host, port, app)
-    # openssl req -new -x509 -keyout scibot-self-sign-temp.pem -out scibot-self-sign-temp.pem -days 365 -nodes
-    server.socket = ssl.wrap_socket(server.socket, keyfile='/etc/letsencrypt/live/scibot.scicrunch.io/privkey.pem', certfile='/etc/letsencrypt/live/scibot.scicrunch.io/fullchain.pem', server_side=True)
-    server.serve_forever()
+    if not local:
+        return app
+    else:
+        print('host: %s, port %s' % ( host, port ))
+        server = make_server(host, port, app)
+        # openssl req -new -x509 -keyout scibot-self-sign-temp.pem -out scibot-self-sign-temp.pem -days 365 -nodes
+        server.socket = ssl.wrap_socket(server.socket, keyfile='/etc/letsencrypt/live/scibot.scicrunch.io/privkey.pem', certfile='/etc/letsencrypt/live/scibot.scicrunch.io/fullchain.pem', server_side=True)
+        server.serve_forever()
 
+if __name__ == '__main__':
+    main(local=True)
