@@ -17,10 +17,12 @@ import csv
 import ssl
 import gzip
 import json
+from multiprocessing.queues import Empty
 from lxml import etree
 from pyramid.response import Response
 from hypothesis import HypothesisUtils
 from export import export_impl, export_json_impl
+from IPython import embed
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API dev token
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
@@ -31,7 +33,7 @@ print(username, group, group2)  # sanity check
 
 prod_username = 'scibot'  # nasty hardcode
 
-if username == prod_username:
+if 0:#username == prod_username:
     host = '0.0.0.0'
     port = 443
 
@@ -41,6 +43,51 @@ else:
     port = 4443
 
 host_port = 'https://' + host + ':' + str(port)
+
+class Locker:
+    def __init__(self, lock=None, urls=None):
+        self.lock = lock
+        self.urls = urls
+
+    def _getQ(self):
+        asdf = set()
+        while 1:
+            try:
+                asdf.add(self.urls.get_nowait())
+            except Empty:
+                break
+        print('current queue', asdf)
+        return asdf
+    
+    def _setQ(self, uris):
+        for uri in uris:
+            print(uri)
+            self.urls.put(uri)
+        print('done')
+
+    def start_uri(self, uri):
+        print(self.lock, id(self.urls))
+        with self.lock:
+            print(self.lock, id(self.urls))
+            uris = self._getQ()
+            if uri in uris:
+                print(uri, 'is already running')
+                return Response('URI Already running')
+            else:
+                print('starting work for', uri)
+                uris.add(uri)
+            self._setQ(uris)
+
+    def stop_uri(self, uri):
+        print(self.lock, id(self.urls))
+        with self.lock:
+            print(self.lock, id(self.urls))
+            uris = self._getQ()
+            uris.discard(uri)
+            print('completed work for', uri)
+            self._setQ(uris)
+
+URL_LOCK = Locker()
 
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
@@ -111,6 +158,11 @@ def rrid_wrapper(request, username, api_token, group, logloc):
     h = HypothesisUtils(username=username, token=api_token, group=group)
 
     target_uri = urlparse.parse_qs(request.text)['uri'][0]
+    existing = URL_LOCK.start_uri(target_uri)
+    if existing:
+        print('################# EARLY EXIT')
+        return existing
+
     params = { 'limit':200, 'uri':target_uri }
     query_url = h.query_url_template.format(query=urlencode(params, True))
     obj = h.authenticated_api_query(query_url)
@@ -125,11 +177,9 @@ def rrid_wrapper(request, username, api_token, group, logloc):
             if tag.startswith('RRID'):
                 tags.add(tag)
     html = urlparse.parse_qs(request.text)['data'][0]
-    print(target_uri)
 
     found_rrids = {}
     try:
-
         matches = re.findall('(.{0,10})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,10})', html.replace('–','-'))
         existing = []
         for match in matches:
@@ -197,6 +247,8 @@ def rrid_wrapper(request, username, api_token, group, logloc):
     except:
         print(traceback.print_exc())
 
+    URL_LOCK.stop_uri(target_uri)
+    #embed()
     return r
 
 def export(request):
@@ -228,11 +280,14 @@ def export_json(request):
 
     return r
 
-def main(local=False):
-
+def main(local=False, lock=None, urls=None):
 
     from wsgiref.simple_server import make_server
     from pyramid.config import Configurator
+
+    URL_LOCK.lock = lock
+    URL_LOCK.urls = urls
+    print(URL_LOCK.lock, URL_LOCK.urls)
 
     config = Configurator()
 
@@ -261,8 +316,10 @@ def main(local=False):
         print('host: %s, port %s' % ( host, port ))
         server = make_server(host, port, app)
         # openssl req -new -x509 -keyout scibot-self-sign-temp.pem -out scibot-self-sign-temp.pem -days 365 -nodes
-        server.socket = ssl.wrap_socket(server.socket, keyfile='/etc/letsencrypt/live/scibot.scicrunch.io/privkey.pem', certfile='/etc/letsencrypt/live/scibot.scicrunch.io/fullchain.pem', server_side=True)
+        #server.socket = ssl.wrap_socket(server.socket, keyfile='/etc/letsencrypt/live/scibot.scicrunch.io/privkey.pem', certfile='/etc/letsencrypt/live/scibot.scicrunch.io/fullchain.pem', server_side=True)
+        server.socket = ssl.wrap_socket(server.socket, keyfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.key', certfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.crt', server_side=True)
         server.serve_forever()
+
 
 if __name__ == '__main__':
     main(local=True)
