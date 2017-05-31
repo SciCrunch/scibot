@@ -48,10 +48,12 @@ The found RRIDs are logged to timestamped files, along with the text of the arti
 7. `export RRIDBOT_GROUP=somegroupname`
 8. `unset HISTFILE`
 9. `export RRIDBOT_API_TOKEN=sometoken`
-10. create a screen session
-11. in the screen session run `cd scibot; ./guni.sh` you should create a link to the log files folder in ~/scibot/
-12. get letsencrypt certs using certbot, follow directions [here](https://certbot.eff.org/docs/using.html) (prefer standalone)
-13. before or after starting gunicorn you need to run `sudo yum install nginx && sudo cp ~/scibot/nginx.conf /etc/nginx/nginx.conf && sudo service start nginx`
+10. `export RRIDBOT_SYNC=somerandomnumber` (e.g. run `head -c 100 /dev/urandom | tr -dc 'a-zA-Z0-9'` every time)
+11. create a screen session
+12. in the screen session run `cd scibot; ./guni.sh` you should create a link to the log files folder in ~/scibot/
+13. get letsencrypt certs using certbot, follow directions [here](https://certbot.eff.org/docs/using.html) (prefer standalone)
+14. before or after starting gunicorn you need to run `sudo yum install nginx && sudo cp ~/scibot/nginx.conf /etc/nginx/nginx.conf && sudo service start nginx`
+15. run `python sync.py` in another screen
 
 ## Retrieving data
 

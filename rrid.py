@@ -17,8 +17,8 @@ import csv
 import ssl
 import gzip
 import json
-from multiprocessing.queues import Empty
 from lxml import etree
+from curio import Channel, run
 from pyramid.response import Response
 from hypothesis import HypothesisUtils
 from export import export_impl, export_json_impl
@@ -28,6 +28,7 @@ api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API dev toke
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
 group = environ.get('RRIDBOT_GROUP', '__world__')
 group2 = environ.get('RRIDBOT_GROUP2', '__world__')
+syncword = environ.get('RRIDBOT_SYNC')
 
 print(username, group, group2)  # sanity check
 
@@ -44,10 +45,23 @@ else:
 
 host_port = 'https://' + host + ':' + str(port)
 
+# synchronization setup
+async def producer():
+    chan = ('localhost', 12345)
+    ch = Channel(chan)
+    c = await ch.connect(authkey=syncword.encode())
+    async def send(uri):
+        await c.send(uri)
+        resp = await c.recv()
+        #await c.close()
+        print(resp, uri)
+        return resp
+    return send
+
+
 class Locker:
-    def __init__(self, lock=None, urls=None):
-        self.lock = lock
-        self.urls = urls
+    def __init__(self, send):
+        self.send = send
 
     def _getQ(self):
         asdf = set()
@@ -68,6 +82,12 @@ class Locker:
         print('done putting', uris, 'in queue')
 
     def start_uri(self, uri):
+        val = run(self.send, 'add ' + uri)
+        if val:
+            return Response('URI Already running ' + uri)
+        else:
+            return
+
         print(self.lock, id(self.urls))
         with self.lock:
             print(self.lock, id(self.urls))
@@ -81,6 +101,8 @@ class Locker:
             self._setQ(uris)
 
     def stop_uri(self, uri):
+        run(self.send, 'del ' + uri)
+        return
         #print(self.lock, id(self.urls))
         with self.lock:
             #print(self.lock, id(self.urls))
@@ -89,7 +111,8 @@ class Locker:
             print('completed work for', uri)
             self._setQ(uris)
 
-URL_LOCK = Locker()
+send = run(producer)
+URL_LOCK = Locker(send)
 
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
@@ -287,16 +310,6 @@ def main(local=False):#, lock=None, urls=None):
     from wsgiref.simple_server import make_server
     from pyramid.config import Configurator
 
-    from gevent.queue import Queue
-    from gevent.lock import BoundedSemaphore
-
-    lock = BoundedSemaphore()
-    urls = Queue()
-
-    URL_LOCK.lock = lock
-    URL_LOCK.urls = urls
-    print(URL_LOCK.lock, URL_LOCK.urls)
-
     config = Configurator()
 
     config.add_route('rrid', '/rrid')
@@ -328,7 +341,7 @@ def main(local=False):#, lock=None, urls=None):
         server.socket = ssl.wrap_socket(server.socket, keyfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.key', certfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.crt', server_side=True)
         server.serve_forever()
 
-def main(local=False):
+def _main(local=False):
     from time import sleep
     from curio import Channel, run
     from pyramid.config import Configurator

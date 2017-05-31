@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
+from os import environ
 from curio import Channel, run
+syncword = environ.get('RRIDBOT_SYNC')
 chan = ('localhost', 12345)
 async def consumer():
     ch = Channel(chan)
-    c = await ch.accept(authkey=b'hello')
+    c = await ch.accept(authkey=syncword.encode())
     myset = set()
     while True:
         try:
@@ -12,7 +14,7 @@ async def consumer():
         except (EOFError, ConnectionResetError) as e:  # in the event that the client closes
             print('resetting')
             myset = set()
-            c = await ch.accept(authkey=b'hello')
+            c = await ch.accept(authkey=syncword.encode())
             continue
         if msg is None:  # explicit reset
             myset = set()
