@@ -330,25 +330,9 @@ def main(local=False):#, lock=None, urls=None):
 
 def main(local=False):
     from time import sleep
-    #from multiprocessing import Process, Pipe, Lock, Queue,
-    from multiprocessing import Process
-    #from gevent.lock import RLock
-    #from gevent.queue import Queue
-    #from gevent.queue import JoinableQueue
-    #from gevent import monkey
-    #from queue import Queue
     from curio import Channel, run
     from pyramid.config import Configurator
 
-    #monkey.patch_all()
-
-    #lock = RLock()
-    #q = JoinableQueue()
-    #URL_LOCK.lock = lock
-    #URL_LOCK.urls = q
-    #m = Manager()
-    #MYSET = m.dict()
-    #MYSET = set()
     async def producer():
         chan = ('localhost', 12345)
         ch = Channel(chan)
@@ -393,8 +377,6 @@ def main(local=False):
     config.add_route('testing2', '/testing2')
     config.add_view(testing2, route_name='testing2')
     return config.make_wsgi_app()
-
-#async def getExisting(client, addr):
 
 if __name__ == '__main__':
     main(local=True)
