@@ -54,16 +54,18 @@ class Locker:
         while 1:
             try:
                 asdf.add(self.urls.get_nowait())
+                print('oh boy')
             except Empty:
                 break
         print('current queue', asdf)
+        #print(id(self))
         return asdf
     
     def _setQ(self, uris):
         for uri in uris:
-            print(uri)
+            print('putting uri', uri)
             self.urls.put(uri)
-        print('done')
+        print('done putting', uris, 'in queue')
 
     def start_uri(self, uri):
         print(self.lock, id(self.urls))
@@ -79,9 +81,9 @@ class Locker:
             self._setQ(uris)
 
     def stop_uri(self, uri):
-        print(self.lock, id(self.urls))
+        #print(self.lock, id(self.urls))
         with self.lock:
-            print(self.lock, id(self.urls))
+            #print(self.lock, id(self.urls))
             uris = self._getQ()
             uris.discard(uri)
             print('completed work for', uri)
@@ -280,10 +282,16 @@ def export_json(request):
 
     return r
 
-def main(local=False, lock=None, urls=None):
+def main(local=False):#, lock=None, urls=None):
 
     from wsgiref.simple_server import make_server
     from pyramid.config import Configurator
+
+    from gevent.queue import Queue
+    from gevent.lock import BoundedSemaphore
+
+    lock = BoundedSemaphore()
+    urls = Queue()
 
     URL_LOCK.lock = lock
     URL_LOCK.urls = urls
@@ -320,6 +328,73 @@ def main(local=False, lock=None, urls=None):
         server.socket = ssl.wrap_socket(server.socket, keyfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.key', certfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.crt', server_side=True)
         server.serve_forever()
 
+def main(local=False):
+    from time import sleep
+    #from multiprocessing import Process, Pipe, Lock, Queue,
+    from multiprocessing import Process
+    #from gevent.lock import RLock
+    #from gevent.queue import Queue
+    #from gevent.queue import JoinableQueue
+    #from gevent import monkey
+    #from queue import Queue
+    from curio import Channel, run
+    from pyramid.config import Configurator
+
+    #monkey.patch_all()
+
+    #lock = RLock()
+    #q = JoinableQueue()
+    #URL_LOCK.lock = lock
+    #URL_LOCK.urls = q
+    #m = Manager()
+    #MYSET = m.dict()
+    #MYSET = set()
+    async def producer():
+        chan = ('localhost', 12345)
+        ch = Channel(chan)
+        c = await ch.connect(authkey=b'hello')
+        async def send(uri):
+            await c.send(uri)
+            resp = await c.recv()
+            #await c.close()
+            print(resp, uri)
+            return resp
+        return send
+
+    send = run(producer)
+    print('we are ready')  # for some reason this only runs once
+    uri1 = 'http://testing.org/1'
+    uri2 = 'http://testing.org/2'
+    def testing(request):
+        val = run(send, 'add ' + uri1)
+        print(val)
+        if val:
+            print('### EARLY EXIT')
+            return Response('ALREADY RUNNING 1')
+        else:
+            sleep(2)
+            val = run(send, 'del ' + uri1)
+        return Response('aaaaaaaaaaa')
+
+    def testing2(request):
+        val = run(send, 'add ' + uri2)
+        print(val)
+        if val:
+            print('### EARLY EXIT')
+            return Response('ALREADY RUNNING 2')
+        else:
+            sleep(2)
+            val = run(send, 'del ' + uri2)
+        return Response('bbbbbbbbbbb')
+
+    config = Configurator()
+    config.add_route('testing', '/testing')
+    config.add_view(testing, route_name='testing')
+    config.add_route('testing2', '/testing2')
+    config.add_view(testing2, route_name='testing2')
+    return config.make_wsgi_app()
+
+#async def getExisting(client, addr):
 
 if __name__ == '__main__':
     main(local=True)
