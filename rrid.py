@@ -203,9 +203,36 @@ def rrid_wrapper(request, username, api_token, group, logloc):
                 tags.add(tag)
     html = urlparse.parse_qs(request.text)['data'][0]
 
+    # cleanup the html
+    text = html.replace('–','-')
+    text = text.replace('‐','-')  # what the wat
+    text = text.replace('\xa0',' ')  # nonbreaking space fix
+
+    mids = (r'',
+            r'\ ',
+            r'_\ ',
+            r'\ _',
+            r': ',
+            r'-',
+           )
+    tail = r'([\s,;\)])'
+    replace = r'\1_\2\3'
+    def make_cartesian_product(prefix, suffix=r'(\d+)'):
+        return [(prefix + mid + suffix + tail, replace) for mid in mids]
+
+    fixes = []
+    prefixes_digit = [r'(%s)' % _ for _ in ('AB', 'SCR', 'MGI')]
+    for p in prefixes_digit:
+        fixes.extend(make_cartesian_product(p))
+    fixes.extend(make_cartesian_product(r'(CVCL)', r'(\w{0,1}\d+)'))
+    fixes.append((r'\(RRID\):', r'RRID:'))
+
+    for f, r in fixes:
+        text = re.sub(f, r, text)
+
     found_rrids = {}
     try:
-        matches = re.findall('(.{0,10})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,10})', html.replace('–','-'))
+        matches = re.findall('(.{0,10})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,10})', text)
         existing = []
         for match in matches:
             print(match)
