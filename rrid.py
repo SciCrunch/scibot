@@ -277,8 +277,12 @@ def rrid_wrapper(request, username, api_token, group, logloc):
                         s += '<p>%s: %s</p>' % (name, value)
                     s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
                     r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRID:'+exact])
+            elif r.status_code >= 500:
+                s = 'Resolver lookup failed due to server error.'
+                s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
             else:
                 s = 'Resolver lookup failed.'
+                s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
                 r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
     except:
         print(traceback.print_exc())
