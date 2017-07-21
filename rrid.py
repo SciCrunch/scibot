@@ -237,8 +237,8 @@ def rrid_wrapper(request, username, api_token, group, logloc):
         for match in matches:
             print(match)
             prefix = match[0]
-            exact = match[3]
-            if 'RRID:'+exact in tags:
+            exact = 'RRID:' + match[3]
+            if exact in tags:
                 print('skipping %s, already annotated' % exact)
                 continue
 
@@ -276,7 +276,7 @@ def rrid_wrapper(request, username, api_token, group, logloc):
                                 continue  # nif-0000-30467 fix keep those pubmed links short!
                         s += '<p>%s: %s</p>' % (name, value)
                     s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRID:'+exact])
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + [exact])
             elif r.status_code >= 500:
                 s = 'Resolver lookup failed due to server error.'
                 s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
