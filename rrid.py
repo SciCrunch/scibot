@@ -232,7 +232,7 @@ def rrid_wrapper(request, username, api_token, group, logloc):
 
     found_rrids = {}
     try:
-        matches = re.findall('(.{0,10})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,10})', text)
+        matches = re.findall('(.{0,32})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,32})', text)
         existing = []
         for match in matches:
             print(match)
