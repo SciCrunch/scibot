@@ -45,11 +45,56 @@ else:
 
 host_port = 'https://' + host + ':' + str(port)
 
+# utility
+def col0(pairs): return list(zip(*pairs))[0]
+def col1(pairs): return list(zip(*pairs))[1]
+
+# prefixes
+prefixes = (
+    ('AB', 'AB'),
+    ('AGSC', 'AGSC'),
+    ('ARC', 'IMSR_ARC'),
+    ('BCBC', 'BCBC'),
+    ('BDSC', 'BDSC'),
+    ('CGC', 'CGC'),
+    ('CRL', 'IMSR_CRL'),
+    ('CVCL', 'CVCL'),
+    ('DGGR', 'DGGR'),
+    ('EM', 'IMSR_EM'),
+    ('FBst', 'FBst'),
+    ('FlyBase', 'FlyBase'),
+    ('HAR', 'IMSR_HAR'),
+    ('JAX', 'IMSR_JAX'),
+    ('KOMP', 'IMSR_KOMP'),
+    ('MGI', 'MGI'),
+    ('MMRRC', 'MMRRC'),
+    ('NCIMR', 'IMSR_NCIMR'),
+    ('NSRRC', 'NSRRC'),
+    ('NXR', 'NXR'),
+    ('RBRC', 'IMSR_RBRC'),
+    ('RGD', 'RGD'),
+    ('SCR', 'SCR'),
+    ('TAC', 'IMSR_TAC'),
+    ('TIGM', 'IMSR_TIGM'),
+    ('TSC', 'TSC'),
+    ('WB', 'WB'),
+    ('WB-STRAIN', 'WB-STRAIN'),
+    ('WTSI', 'IMSR_WTSI'),
+    ('ZDB', 'ZFIN_ZDB'),
+    ('ZFIN', 'ZFIN'),
+    ('ZIRC', 'ZIRC'),
+)
+prefix_lookup = {k:v for k, v in prefixes}
+
+
 # synchronization setup
 async def producer():
     chan = ('localhost', 12345)
     ch = Channel(chan)
-    c = await ch.connect(authkey=syncword.encode())
+    try:
+        c = await ch.connect(authkey=syncword.encode())
+    except AttributeError:
+        raise IOError('Could not connect to the sync process, have you started sync.py?')
     async def send(uri):
         await c.send(uri)
         resp = await c.recv()
@@ -224,7 +269,7 @@ def rrid_wrapper(request, username, api_token, group, logloc):
     prefixes_digit = [r'(%s)' % _ for _ in ('AB', 'SCR', 'MGI')]
     for p in prefixes_digit:
         fixes.extend(make_cartesian_product(p))
-    fixes.extend(make_cartesian_product(r'(CVCL)', r'(\w{0,1}\d+)'))
+    fixes.extend(make_cartesian_product(r'(CVCL)', r'(\w{0,1}\d+)'))  # FIXME r'(\w{0,5})' better \w+ ok
     fixes.append((r'\(RRID\):', r'RRID:'))
 
     for f, r in fixes:
@@ -232,15 +277,11 @@ def rrid_wrapper(request, username, api_token, group, logloc):
 
     found_rrids = {}
     try:
-        matches = re.findall('(.{0,32})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,32})', text)
         existing = []
-        for match in matches:
-            print(match)
-            prefix = match[0]
-            exact = 'RRID:' + match[3]
+        def post_match_logic(prefix, exact, exact_for_hypothesis, suffix):
             if exact in tags:
                 print('skipping %s, already annotated' % exact)
-                continue
+                return
 
             new_tags = []
             if exact in existing:
@@ -249,7 +290,6 @@ def rrid_wrapper(request, username, api_token, group, logloc):
                 existing.append(exact)
 
             found_rrids[exact] = None
-            suffix = match[4]
             print('\t' + exact)
             resolver_uri = 'https://scicrunch.org/resolver/%s.xml' % exact
             r = requests.get(resolver_uri)
@@ -261,8 +301,8 @@ def rrid_wrapper(request, username, api_token, group, logloc):
                 if root.findall('error'):
                     s = 'Resolver lookup failed.'
                     s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
-                    print('ERROR')
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
+                    print('ERROR, rrid unresolved')
                 else:
                     data_elements = root.findall('data')[0]
                     s = ''
@@ -276,14 +316,38 @@ def rrid_wrapper(request, username, api_token, group, logloc):
                                 continue  # nif-0000-30467 fix keep those pubmed links short!
                         s += '<p>%s: %s</p>' % (name, value)
                     s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + [exact])
+                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + [exact])
             elif r.status_code >= 500:
                 s = 'Resolver lookup failed due to server error.'
                 s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
             else:
                 s = 'Resolver lookup failed.'
                 s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
+                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
+
+        # first round
+        regex1 = '(.{0,32})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,31})'
+        matches = re.findall(regex1, text)
+        for prefix, rrid, sep, id_, suffix in matches:
+            print((prefix, rrid, sep, id_, suffix))
+            exact = 'RRID:' + id_
+            exact_for_hypothesis = exact
+            post_match_logic(prefix, exact, exact_for_hypothesis, suffix)
+
+        # second round
+        orblock = '(' + '|'.join(col0(prefixes)) + ')'
+        regex2 = '(.{0,32})' + orblock + '(:|_)([ \t]*)(\w+)([^\w].{0,31})'  # the first 0,32 always greedy matches???
+        matches2 = re.findall(regex2, text)  # FIXME this doesn't work since our prefix/suffix can be 'wrong'
+        for prefix, namespace, sep, spaces, nums, suffix in matches2:
+            print((prefix, namespace, sep, spaces, nums, suffix))
+            if re.match(regex1, ''.join((prefix, namespace, sep, spaces, nums, suffix))) is not None:
+                print('already matched')
+                continue  # already caught it above and don't want to add it again
+            exact_for_hypothesis = namespace + sep + nums
+            resolver_namespace = prefix_lookup[namespace]
+            exact = 'RRID:' + resolver_namespace + sep + nums
+            post_match_logic(prefix, exact, exact_for_hypothesis, suffix)
+
     except:
         print(traceback.print_exc())
 
