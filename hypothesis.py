@@ -99,16 +99,12 @@ class HypothesisUtils:
 
     def search_all(self, params={}):
         """Call search API with pagination, return rows """
-        if 'offset' not in params:
-            params['offset'] = 0
-        params['limit'] = self.single_page_limit
         while True:
-            query_url = self.query_url_template.format(query=urlencode(params, True))
-            obj = self.authenticated_api_query(query_url)
+            obj = self.search(params)
             rows = obj['rows']
             row_count = len(rows)
             if 'replies' in obj:
-               rows += obj['replies']
+                rows += obj['replies']
             params['offset'] += row_count
             if params['offset'] > self.multi_page_limit:
                 break
@@ -116,6 +112,16 @@ class HypothesisUtils:
                 break
             for row in rows:
                 yield row
+
+    def search(self, params={}):
+        """ Call search API, return a dict """
+        if 'offset' not in params:
+            params['offset'] = 0
+        if 'limit' not in params or 'limit' in params and params['limit'] is None:
+            params['limit'] = self.single_page_limit
+        query_url = self.query_url_template.format(query=urlencode(params, True))
+        obj = self.authenticated_api_query(query_url)
+        return obj
 
 class HypothesisAnnotation:
     """Encapsulate one row of a Hypothesis API search."""
@@ -210,7 +216,8 @@ class HypothesisAnnotation:
             print(traceback.format_exc())
 
     def __eq__(self, other):
-        return self.text + self.id == other.text + other.id
+        # text and tags can change, if exact changes then the id will also change
+        return self.id == other.id and self.text == other.text and set(self.tags) == set(other.tags)
 
     def __hash__(self):
         return hash(self.text + self.id)
