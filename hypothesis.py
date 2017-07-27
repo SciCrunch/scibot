@@ -99,7 +99,8 @@ class HypothesisUtils:
 
     def search_all(self, params={}):
         """Call search API with pagination, return rows """
-        params['offset'] = 0
+        if 'offset' not in params:
+            params['offset'] = 0
         params['limit'] = self.single_page_limit
         while True:
             query_url = self.query_url_template.format(query=urlencode(params, True))
@@ -207,3 +208,10 @@ class HypothesisAnnotation:
 
         except:
             print(traceback.format_exc())
+
+    def __eq__(self, other):
+        return self.text + self.id == other.text + other.id
+
+    def __hash__(self):
+        return hash(self.text + self.id)
+
