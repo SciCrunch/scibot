@@ -172,25 +172,9 @@ URL_LOCK = Locker(send)
 
 bookmarklet_base = r"""
 javascript:(function(){var xhr=new XMLHttpRequest();
-function field(tag, prop, val, key){
-var obj=document.querySelector(tag + '[' + prop + "='" + val + "']");
-return obj ? obj[key] : '';
-};
-var a=field('link', 'rel', 'canonical', 'href');
-var b=field('meta', 'name', 'DC.Identifier', 'content'); /*elife pmc etc.*/
-var c=field('meta', 'name', 'DOI', 'content'); /*nature pref*/
-var d=field('meta', 'name', 'dc.identifier', 'content'); /*nature*/
-var e=field('meta', 'name', 'citation_doi', 'content'); /*wiley jove*/
-var f=field('a', 'class', 'doi', 'href'); /*evilier*/
 
 var params=
 'uri='+location.href+
-'&canonical_url='+a+
-'&doi0='+b+
-'&doi1='+c+
-'&doi2='+d+
-'&doi3='+e+
-'&doi4='+f+
 '&head='+encodeURIComponent(document.head.innerHTML)+
 '&body='+encodeURIComponent(document.body.innerHTML)+
 '&data='+encodeURIComponent(document.body.innerText);
@@ -265,47 +249,50 @@ def rrid_wrapper(request, username, api_token, group, logloc):
     body = htmlify(dict_['body'][0])
     html = dict_['data'][0]
 
-    ht = BeautifulSoup(head, 'lxml')
-    bt = BeautifulSoup(body, 'lxml')
+    headsoup = BeautifulSoup(head, 'lxml')
+    bodysoup = BeautifulSoup(body, 'lxml')
 
-    def doitags(soup):
-        def findDoi(tag, prop, val, key):
+    def searchSoup(soup):
+        def search(tag, prop, val, key):
             matches = soup.find_all(tag, {prop:val})
             if matches:
                 return matches[0][key]
-        out = (
-            findDoi('meta', 'name', 'DC.Identifier', 'content'),  # elife pmc etc.
-            findDoi('meta', 'name', 'DOI', 'content'),  # nature pref
-            findDoi('meta', 'name', 'dc.identifier', 'content'),  # nature
-            findDoi('meta', 'name', 'citation_doi', 'content'), # wiley jove
-            findDoi('a', 'class', 'doi', 'href'),  # evilier
+        return search
+
+    def getDoi():
+        argslist = (  # these go in order so best returns first
+            # TODO bind a handler for these as well...
+            ('meta', 'name', 'DC.Identifier', 'content'),  # elife pmc etc.
+            ('meta', 'name', 'DOI', 'content'),  # nature pref
+            ('meta', 'name', 'dc.identifier', 'content'),  # nature
+            ('meta', 'name', 'citation_doi', 'content'), # wiley jove
+            ('a', 'class', 'doi', 'href'),  # evilier
         )
-        return out
+        for soup in (headsoup, bodysoup):
+            for args in argslist:
+                doi = searchSoup(soup)(*args)
+                if doi is not None:
+                    return doi
 
-    hd = doitags(ht)
-    bd = doitags(bt)
-    embed()
-
-    def getUri(d):
-        uri = d['uri'][0]
-        if 'canonical_url' in d:
-            canonical_url = dict_['canonical_url'][0]
-            if canonical_url and canonical_url != uri:
-                print('canonical_url and uri do not match, preferring canonical_url', canonical_url, uri)
-                return canonical_url
+    def getUri():
+        uri = dict_['uri'][0]
+        argslist = (
+            ('meta', 'property', 'og:url', 'content'),
+            ('link', 'rel', 'canonical', 'href'),
+        )
+        for soup in (headsoup, bodysoup):
+            for args in argslist:
+                cu = searchSoup(soup)(*args)
+                if cu is not None:
+                    if cu != uri:
+                        print('canonical and uri do not match, preferring canonical', cu, uri)
+                    return cu
         return uri
             
-    def getDoi(d):
-        for i in range(5):  # it may be better to resolve this in the js to reduce churn
-            key = 'doi{i}'.format(i=i)
-            if key in d:
-                return d[key][0]
-
-    #pprint.pprint(sorted((k, v) for k, v in dict_.items() if k != 'data'))
-    target_uri = getUri(dict_)
-    #doi = getDoi(dict_)
-    #print(target_uri)
-    #print('DOI:%s' % doi)
+    target_uri = getUri()
+    doi = getDoi()
+    print(target_uri)
+    print('DOI:%s' % doi)
 
     existing = URL_LOCK.start_uri(target_uri)
     if existing:
@@ -420,9 +407,9 @@ def rrid_wrapper(request, username, api_token, group, logloc):
         for prefix, namespace, sep, spaces, nums, cvcl, cvcl_sep, cvcl_spaces, cvcl_nums, suffix in matches2:
             if cvcl:
                 prefix, namespace, sep, spaces, nums = cvcl, cvcl_sep, cvcl_spaces, cvcl_nums  # sigh
-            print((prefix, namespace, sep, spaces, nums, suffix))
+            #print((prefix, namespace, sep, spaces, nums, suffix))
             if re.match(regex1, ''.join((prefix, namespace, sep, spaces, nums, suffix))) is not None:
-                print('already matched')
+                #print('already matched')
                 continue  # already caught it above and don't want to add it again
             exact_for_hypothesis = namespace + sep + nums
             resolver_namespace = prefix_lookup[namespace]
