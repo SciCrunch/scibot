@@ -24,6 +24,7 @@ from pyramid.response import Response
 from hypothesis import HypothesisUtils
 from export import export_impl, export_json_impl
 from IPython import embed
+from bs4 import BeautifulSoup
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API dev token
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
@@ -176,17 +177,24 @@ var obj=document.querySelector(tag + '[' + prop + "='" + val + "']");
 return obj ? obj[key] : '';
 };
 var a=field('link', 'rel', 'canonical', 'href');
-var b=field('meta', 'name', 'DC.Identifier', 'content');
-var c=field('meta', 'name', 'dc.identifier', 'content');
-var d=field('meta', 'name', 'DOI', 'content');
-var e=field('a', 'class', 'doi', 'href');
-var params='uri='+location.href+
+var b=field('meta', 'name', 'DC.Identifier', 'content'); /*elife pmc etc.*/
+var c=field('meta', 'name', 'DOI', 'content'); /*nature pref*/
+var d=field('meta', 'name', 'dc.identifier', 'content'); /*nature*/
+var e=field('meta', 'name', 'citation_doi', 'content'); /*wiley jove*/
+var f=field('a', 'class', 'doi', 'href'); /*evilier*/
+
+var params=
+'uri='+location.href+
 '&canonical_url='+a+
 '&doi0='+b+
 '&doi1='+c+
 '&doi2='+d+
 '&doi3='+e+
+'&doi4='+f+
+'&head='+encodeURIComponent(document.head.innerHTML)+
+'&body='+encodeURIComponent(document.body.innerHTML)+
 '&data='+encodeURIComponent(document.body.innerText);
+
 xhr.open('POST','%s/%s',true);
 xhr.setRequestHeader('Content-type','application/x-www-form-urlencoded');
 xhr.setRequestHeader('Access-Control-Allow-Origin','*');
@@ -195,22 +203,24 @@ xhr.send(params)}());
 """
 bookmarklet_base = bookmarklet_base.replace('\n','')
 
+html_base = """<html>
+<head>
+<style>
+body { font-family: verdana; margin:.75in }
+</style>
+<title>rrid bookmarklet</title></head>
+<body>
+<p>To install the bookmarklet, drag this link -- <a href="%s">rrid</a> -- to your bookmarks bar.</p>
+<p>If you need to copy/paste the bookmarklet's code into a bookmarklet, it's here:</p>
+<p>%s</p>
+</body>
+</html>
+"""
+
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
     text = bookmarklet_base % (request.application_url.replace('http:', 'https:'), 'rrid')
-    html = """<html>
-    <head>
-    <style>
-    body { font-family: verdana; margin:.75in }
-    </style>
-    <title>rrid bookmarklet</title></head>
-    <body>
-    <p>To install the bookmarklet, drag this link -- <a href="%s">rrid</a> -- to your bookmarks bar.</p>
-    <p>If you need to copy/paste the bookmarklet's code into a bookmarklet, it's here:</p>
-    <p>%s</p>
-    </body>
-    </html>
-    """ % ( text, text )
+    html = html_base % (text.replace('"', '&quot;'), text)
     r = Response(html)
     r.content_type = 'text/html'
     return r
@@ -218,19 +228,7 @@ def bookmarklet(request):
 def validatebookmarklet(request):
     """ Return text of the RRID bookmarklet """
     text = bookmarklet_base % (request.application_url.replace('http:','https:'), 'validaterrid')
-    html = """<html>
-    <head>
-    <style>
-    body { font-family: verdana; margin:.75in }
-    </style>
-    <title>validaterrid bookmarklet</title></head>
-    <body>
-    <p>To install the bookmarklet, drag this link -- <a href="%s">validaterrid</a> -- to your bookmarks bar.</p>
-    <p>If you need to copy/paste the bookmarklet's code into a bookmarklet, it's here:</p>
-    <p>%s</p>
-    </body>
-    </html>
-    """ % ( text, text )
+    html = html_base % (text.replace('"', '&quot;'), text)
     r = Response(html)
     r.content_type = 'text/html'
     return r
@@ -262,7 +260,31 @@ def rrid_wrapper(request, username, api_token, group, logloc):
     h = HypothesisUtils(username=username, token=api_token, group=group)
 
     dict_ = urlparse.parse_qs(request.text)
+    def htmlify(thing): return '<html>' + thing + '</html>'
+    head = htmlify(dict_['head'][0])
+    body = htmlify(dict_['body'][0])
     html = dict_['data'][0]
+
+    ht = BeautifulSoup(head, 'lxml')
+    bt = BeautifulSoup(body, 'lxml')
+
+    def doitags(soup):
+        def findDoi(tag, prop, val, key):
+            matches = soup.find_all(tag, {prop:val})
+            if matches:
+                return matches[0][key]
+        out = (
+            findDoi('meta', 'name', 'DC.Identifier', 'content'),  # elife pmc etc.
+            findDoi('meta', 'name', 'DOI', 'content'),  # nature pref
+            findDoi('meta', 'name', 'dc.identifier', 'content'),  # nature
+            findDoi('meta', 'name', 'citation_doi', 'content'), # wiley jove
+            findDoi('a', 'class', 'doi', 'href'),  # evilier
+        )
+        return out
+
+    hd = doitags(ht)
+    bd = doitags(bt)
+    embed()
 
     def getUri(d):
         uri = d['uri'][0]
@@ -274,14 +296,14 @@ def rrid_wrapper(request, username, api_token, group, logloc):
         return uri
             
     def getDoi(d):
-        for i in (0, 2, 1, 3):  # in preferred order (see bookmarklet)
+        for i in range(5):  # it may be better to resolve this in the js to reduce churn
             key = 'doi{i}'.format(i=i)
             if key in d:
                 return d[key][0]
 
-    pprint.pprint(sorted((k, v) for k, v in dict_.items() if k != 'data'))
+    #pprint.pprint(sorted((k, v) for k, v in dict_.items() if k != 'data'))
     target_uri = getUri(dict_)
-    doi = getDoi(dict_)
+    #doi = getDoi(dict_)
     #print(target_uri)
     #print('DOI:%s' % doi)
 
