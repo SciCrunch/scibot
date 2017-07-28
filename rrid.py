@@ -171,7 +171,7 @@ bookmarklet_base = bookmarklet_base.replace('\n','')
 
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
-    text = bookmarklet_base % (request.application_url, 'rrid')
+    text = bookmarklet_base % (request.application_url.replace('http:', 'https:'), 'rrid')
     text = text.replace('"',"'")
     html = """<html>
     <head>
@@ -192,7 +192,7 @@ def bookmarklet(request):
 
 def validatebookmarklet(request):
     """ Return text of the RRID bookmarklet """
-    text = bookmarklet_base % (request.application_url, 'validaterrid')
+    text = bookmarklet_base % (request.application_url.replace('http:','https:'), 'validaterrid')
     text = text.replace('"',"'")
     html = """<html>
     <head>
