@@ -58,7 +58,7 @@ prefixes = (
     ('BDSC', 'BDSC'),
     ('CGC', 'CGC'),
     ('CRL', 'IMSR_CRL'),
-    ('CVCL', 'CVCL'),
+    #('CVCL', 'CVCL'),  # numbers + letters :/
     ('DGGR', 'DGGR'),
     ('EM', 'IMSR_EM'),
     ('FBst', 'FBst'),
@@ -85,7 +85,7 @@ prefixes = (
     ('ZIRC', 'ZIRC'),
 )
 prefix_lookup = {k:v for k, v in prefixes}
-
+prefix_lookup['CVCL'] = 'CVCL'  # ah special cases
 
 # synchronization setup
 async def producer():
@@ -159,9 +159,19 @@ class Locker:
 send = run(producer)
 URL_LOCK = Locker(send)
 
+bookmarklet_base = """javascript:(function(){var xhr=new XMLHttpRequest();
+var canonical_url=document.querySelector("link[rel=\\'canonical\\']").href;
+var params='uri='+location.href+'&canonical_url='+canonical_url+'&data='+encodeURIComponent(document.body.innerText);
+xhr.open('POST','%s/%s',true);
+xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");
+xhr.setRequestHeader("Access-Control-Allow-Origin","*");
+xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};
+xhr.send(params)}());"""
+bookmarklet_base = bookmarklet_base.replace('\n','')
+
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
-    text = """javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','%s/rrid',true);xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");xhr.setRequestHeader("Access-Control-Allow-Origin","*");xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());""" % request.application_url.replace('http:','https:')  # pyramid is blind to ssl...
+    text = bookmarklet_base % (request.application_url, 'rrid')
     text = text.replace('"',"'")
     html = """<html>
     <head>
@@ -182,7 +192,7 @@ def bookmarklet(request):
 
 def validatebookmarklet(request):
     """ Return text of the RRID bookmarklet """
-    text = """javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','%s/validaterrid',true);xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");xhr.setRequestHeader("Access-Control-Allow-Origin","*");xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());""" % request.application_url.replace('http:','https:')  # pyramid is blind to ssl...
+    text = bookmarklet_base % (request.application_url, 'validaterrid')
     text = text.replace('"',"'")
     html = """<html>
     <head>
@@ -227,7 +237,15 @@ def rrid_wrapper(request, username, api_token, group, logloc):
 
     h = HypothesisUtils(username=username, token=api_token, group=group)
 
-    target_uri = urlparse.parse_qs(request.text)['uri'][0]
+    dict_ = urlparse.parse_qs(request.text)
+    html = dict_['data'][0]
+    target_uri = dict_['uri'][0]
+    canonical_url = dict_['canonical_url'][0]
+    if canonical_url != target_uri:
+        print('canonical_url and target_uri do not match, preferring canonical_url', canonical_url, target_uri)
+        old_target_uri = target_uri
+        target_uri = canonical_url
+
     existing = URL_LOCK.start_uri(target_uri)
     if existing:
         print('################# EARLY EXIT')
@@ -246,7 +264,6 @@ def rrid_wrapper(request, username, api_token, group, logloc):
         for tag in row['tags']:
             if tag.startswith('RRID'):
                 tags.add(tag)
-    html = urlparse.parse_qs(request.text)['data'][0]
 
     # cleanup the html
     text = html.replace('–','-')
@@ -261,12 +278,12 @@ def rrid_wrapper(request, username, api_token, group, logloc):
             r'-',
            )
     tail = r'([\s,;\)])'
-    replace = r'\1_\2\3'
+    replace = r'\1\2_\3\4'
     def make_cartesian_product(prefix, suffix=r'(\d+)'):
         return [(prefix + mid + suffix + tail, replace) for mid in mids]
 
     fixes = []
-    prefixes_digit = [r'(%s)' % _ for _ in ('AB', 'SCR', 'MGI')]
+    prefixes_digit = [r'([^\w])(%s)' % _ for _ in ('AB', 'SCR', 'MGI')]
     for p in prefixes_digit:
         fixes.extend(make_cartesian_product(p))
     fixes.extend(make_cartesian_product(r'(CVCL)', r'(\w{0,1}\d+)'))  # FIXME r'(\w{0,5})' better \w+ ok
@@ -336,9 +353,12 @@ def rrid_wrapper(request, username, api_token, group, logloc):
 
         # second round
         orblock = '(' + '|'.join(col0(prefixes)) + ')'
-        regex2 = '(.{0,32})' + orblock + '(:|_)([ \t]*)(\w+)([^\w].{0,31})'  # the first 0,32 always greedy matches???
+        sep = '(:|_)([ \t]*)'
+        regex2 = '(.{0,32})(?:' + orblock + '{sep}(\d+)|(CVCL){sep}(\w+))([^\w].{{0,31}})'.format(sep=sep)  # the first 0,32 always greedy matches???
         matches2 = re.findall(regex2, text)  # FIXME this doesn't work since our prefix/suffix can be 'wrong'
-        for prefix, namespace, sep, spaces, nums, suffix in matches2:
+        for prefix, namespace, sep, spaces, nums, cvcl, cvcl_sep, cvcl_spaces, cvcl_nums, suffix in matches2:
+            if cvcl:
+                prefix, namespace, sep, spaces, nums = cvcl, cvcl_sep, cvcl_spaces, cvcl_nums  # sigh
             print((prefix, namespace, sep, spaces, nums, suffix))
             if re.match(regex1, ''.join((prefix, namespace, sep, spaces, nums, suffix))) is not None:
                 print('already matched')
