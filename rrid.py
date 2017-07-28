@@ -160,8 +160,11 @@ send = run(producer)
 URL_LOCK = Locker(send)
 
 bookmarklet_base = """javascript:(function(){var xhr=new XMLHttpRequest();
-var canonical_url=document.querySelector("link[rel=\\'canonical\\']").href;
-var params='uri='+location.href+'&canonical_url='+canonical_url+'&data='+encodeURIComponent(document.body.innerText);
+var canonical_url_obj=document.querySelector("link[rel=\\'canonical\\']");
+var canonical_url=canonical_url_obj?canonical_url_obj.href:null;
+var doi_obj=document.querySelector("meta[name=\\'DC.Identifier\\']");
+var doi=doi_obj?doi_obj.content:null;
+var params='uri='+location.href+'&canonical_url='+canonical_url+'&doi='+doi+'&data='+encodeURIComponent(document.body.innerText);
 xhr.open('POST','%s/%s',true);
 xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");
 xhr.setRequestHeader("Access-Control-Allow-Origin","*");
@@ -241,7 +244,11 @@ def rrid_wrapper(request, username, api_token, group, logloc):
     html = dict_['data'][0]
     target_uri = dict_['uri'][0]
     canonical_url = dict_['canonical_url'][0]
-    if canonical_url != target_uri:
+    canonical_url = None if canonical_url == 'null' else canonical_url
+    doi = dict_['doi'][0]
+    doi = Null if doi == 'null' else doi
+    print('DOI:%s' % doi)
+    if canonical_url and canonical_url != target_uri:
         print('canonical_url and target_uri do not match, preferring canonical_url', canonical_url, target_uri)
         old_target_uri = target_uri
         target_uri = canonical_url
