@@ -246,7 +246,7 @@ def rrid_wrapper(request, username, api_token, group, logloc):
     canonical_url = dict_['canonical_url'][0]
     canonical_url = None if canonical_url == 'null' else canonical_url
     doi = dict_['doi'][0]
-    doi = Null if doi == 'null' else doi
+    doi = None if doi == 'null' else doi
     print('DOI:%s' % doi)
     if canonical_url and canonical_url != target_uri:
         print('canonical_url and target_uri do not match, preferring canonical_url', canonical_url, target_uri)
