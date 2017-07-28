@@ -19,7 +19,7 @@ async def consumer():
         if msg is None:  # explicit reset
             myset = set()
         else:
-            op, uri = msg.split(' ')
+            op, uri = msg.split(' ', 1)
             print(op, uri)
             if op == 'add':
                 if uri in myset:
