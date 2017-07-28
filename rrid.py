@@ -17,6 +17,7 @@ import csv
 import ssl
 import gzip
 import json
+import pprint
 from lxml import etree
 from curio import Channel, run
 from pyramid.response import Response
@@ -159,23 +160,44 @@ class Locker:
 send = run(producer)
 URL_LOCK = Locker(send)
 
-bookmarklet_base = """javascript:(function(){var xhr=new XMLHttpRequest();
-var canonical_url_obj=document.querySelector("link[rel=\\'canonical\\']");
-var canonical_url=canonical_url_obj?canonical_url_obj.href:null;
-var doi_obj=document.querySelector("meta[name=\\'DC.Identifier\\']");
-var doi=doi_obj?doi_obj.content:null;
-var params='uri='+location.href+'&canonical_url='+canonical_url+'&doi='+doi+'&data='+encodeURIComponent(document.body.innerText);
+#var canonical_url_obj=document.querySelector("link[rel=\\'canonical\\']");
+#var canonical_url=canonical_url_obj?canonical_url_obj.href:null;
+#var doi_obj=document.querySelector("meta[name=\\'DC.Identifier\\']");
+#var doi=doi_obj?doi_obj.content:null;
+#var sd_doi_obj=document.querySelector('a[class=\\'doi\\']');
+#var sd_doi=sd_doi_obj?sd_doi_obj.href:null;
+#document.querySelector('meta[name=\'DOI\']')
+
+
+bookmarklet_base = r"""
+javascript:(function(){var xhr=new XMLHttpRequest();
+function field(tag, prop, val, key){
+var obj=document.querySelector(tag + '[' + prop + "='" + val + "']");
+return obj ? obj[key] : '';
+};
+var a=field('link', 'rel', 'canonical', 'href');
+var b=field('meta', 'name', 'DC.Identifier', 'content');
+var c=field('meta', 'name', 'dc.identifier', 'content');
+var d=field('meta', 'name', 'DOI', 'content');
+var e=field('a', 'class', 'doi', 'href');
+var params='uri='+location.href+
+'&canonical_url='+a+
+'&doi0='+b+
+'&doi1='+c+
+'&doi2='+d+
+'&doi3='+e+
+'&data='+encodeURIComponent(document.body.innerText);
 xhr.open('POST','%s/%s',true);
-xhr.setRequestHeader("Content-type","application/x-www-form-urlencoded");
-xhr.setRequestHeader("Access-Control-Allow-Origin","*");
+xhr.setRequestHeader('Content-type','application/x-www-form-urlencoded');
+xhr.setRequestHeader('Access-Control-Allow-Origin','*');
 xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};
-xhr.send(params)}());"""
+xhr.send(params)}());
+"""
 bookmarklet_base = bookmarklet_base.replace('\n','')
 
 def bookmarklet(request):
     """ Return text of the RRID bookmarklet """
     text = bookmarklet_base % (request.application_url.replace('http:', 'https:'), 'rrid')
-    text = text.replace('"',"'")
     html = """<html>
     <head>
     <style>
@@ -196,7 +218,6 @@ def bookmarklet(request):
 def validatebookmarklet(request):
     """ Return text of the RRID bookmarklet """
     text = bookmarklet_base % (request.application_url.replace('http:','https:'), 'validaterrid')
-    text = text.replace('"',"'")
     html = """<html>
     <head>
     <style>
@@ -242,16 +263,27 @@ def rrid_wrapper(request, username, api_token, group, logloc):
 
     dict_ = urlparse.parse_qs(request.text)
     html = dict_['data'][0]
-    target_uri = dict_['uri'][0]
-    canonical_url = dict_['canonical_url'][0]
-    canonical_url = None if canonical_url == 'null' else canonical_url
-    doi = dict_['doi'][0]
-    doi = None if doi == 'null' else doi
-    print('DOI:%s' % doi)
-    if canonical_url and canonical_url != target_uri:
-        print('canonical_url and target_uri do not match, preferring canonical_url', canonical_url, target_uri)
-        old_target_uri = target_uri
-        target_uri = canonical_url
+
+    def getUri(d):
+        uri = d['uri'][0]
+        if 'canonical_url' in d:
+            canonical_url = dict_['canonical_url'][0]
+            if canonical_url and canonical_url != uri:
+                print('canonical_url and uri do not match, preferring canonical_url', canonical_url, uri)
+                return canonical_url
+        return uri
+            
+    def getDoi(d):
+        for i in (0, 2, 1, 3):  # in preferred order (see bookmarklet)
+            key = 'doi{i}'.format(i=i)
+            if key in d:
+                return d[key][0]
+
+    pprint.pprint(sorted((k, v) for k, v in dict_.items() if k != 'data'))
+    target_uri = getUri(dict_)
+    doi = getDoi(dict_)
+    #print(target_uri)
+    #print('DOI:%s' % doi)
 
     existing = URL_LOCK.start_uri(target_uri)
     if existing:
