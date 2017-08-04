@@ -265,8 +265,9 @@ def rrid_wrapper(request, username, api_token, group, logloc):
             ('meta', 'name', 'DC.Identifier', 'content'),  # elife pmc etc.
             ('meta', 'name', 'DOI', 'content'),  # nature pref
             ('meta', 'name', 'dc.identifier', 'content'),  # nature
-            ('meta', 'name', 'citation_doi', 'content'), # wiley jove
+            ('meta', 'name', 'citation_doi', 'content'), # wiley jove f1000 ok
             ('a', 'class', 'doi', 'href'),  # evilier
+            ('meta', 'name', 'DC.identifier', 'content'),  # f1000 worst
         )
         for soup in (headsoup, bodysoup):
             for args in argslist:
@@ -283,7 +284,7 @@ def rrid_wrapper(request, username, api_token, group, logloc):
         for soup in (headsoup, bodysoup):
             for args in argslist:
                 cu = searchSoup(soup)(*args)
-                if cu is not None:
+                if cu is not None and cu.startswith('http'):
                     if cu != uri:
                         print('canonical and uri do not match, preferring canonical', cu, uri)
                     return cu
