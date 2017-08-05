@@ -18,6 +18,7 @@ import ssl
 import gzip
 import json
 import pprint
+from typing import Callable, Iterable, Tuple, Any, Generator
 from lxml import etree
 from curio import Channel, run
 from pyramid.response import Response
@@ -257,7 +258,7 @@ def rrid_POST(request, h, logloc):
         print('################# EARLY EXIT')
         return running
     cleaned_text = clean_text(text)
-    tags = existing_tags(target_uri, h)
+    tags, unresolved_exacts = existing_tags(target_uri, h)
 
     if doi:
         pmid = get_pmid(doi)
@@ -267,12 +268,27 @@ def rrid_POST(request, h, logloc):
 
     found_rrids = {}
     existing = []
-    for prefix, exact, exact_for_hypothesis, suffix in find_rrids(cleaned_text):
-        resolve_and_submit(prefix, exact, exact_for_hypothesis, suffix, target_uri, h, tags, found_rrids, existing)
+
+    finder = find_rrids
+
+    def checker(found):
+        prefix, exact, exact_for_hypothesis, suffix = found
+        return not check_already_submitted(exact, exact_for_hypothesis, found_rrids, tags, unresolved_exacts)
+
+    def resolver(found):
+        prefix, exact, exact_for_hypothesis, suffix = found
+        return rrid_resolver_xml(exact, found_rrids)
+
+    def submitter(found, resolved):
+        return submit_to_h(target_uri, found, resolved, h, found_rrids, existing)
+
+    processText = make_find_check_resolve_submit(finder, checker, resolver, submitter)
+
+    responses = list(processText(cleaned_text))
 
     results = ', '.join(found_rrids.keys())
-    write_stdout(target_uri, doi, pmid, results, found_rrids, head, body, text, logloc)
-    write_log(target_uri, doi, pmid, results, found_rrids, head, body, text, logloc)
+    write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h)
+    write_log(target_uri, doi, pmid, found_rrids, head, body, text, h)
 
     r = Response(results)
     r.content_type = 'text/plain'
@@ -282,13 +298,39 @@ def rrid_POST(request, h, logloc):
 
     URL_LOCK.stop_uri(target_uri)
     return r
+
+Found = Tuple[str, str, str, str]
+Finder = Callable[[str], Iterable[Found]]
+Checker = Callable[[Found], bool]
+Resolved = Tuple[str, int, str]
+Resolver = Callable[[Found], Resolved]
+Submitter = Callable[[Found, Resolved], Any] 
+Processor = Callable[[str, str], Generator]
+
+def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker, resolver: Resolver, submitter: Submitter) -> Processor:
+    def inner(text: str) -> Generator:
+        for found in finder(text):
+            print(found)
+            if notSubmittedCheck(found):
+                resolved = resolver(found)
+                yield submitter(found, resolved)
+    return inner
+    
 def process_POST_request(request):
-    def htmlify(thing): return '<html>' + thing + '</html>'
     dict_ = urlparse.parse_qs(request.text)
+    def htmlify(thing):
+        try:
+            html = dict_[thing][0]
+        except KeyError as e:
+            html = ''
+        return '<html>' + html + '</html>'
     uri = dict_['uri'][0]
-    head = htmlify(dict_['head'][0])
-    body = htmlify(dict_['body'][0])
-    text = dict_['data'][0]
+    head = htmlify('head')
+    body = htmlify('body')
+    try:
+        text = dict_['data'][0]
+    except KeyError as e:
+        text = ''
 
     headsoup = BeautifulSoup(head, 'lxml')
     bodysoup = BeautifulSoup(body, 'lxml')
@@ -312,6 +354,7 @@ def getDoi(*soups):
         ('meta', 'name', 'dc.identifier', 'content'),  # nature
         ('meta', 'name', 'citation_doi', 'content'), # wiley jove f1000 ok
         ('a', 'class', 'doi', 'href'),  # evilier
+        ('a', 'class', 'S_C_ddDoi', 'href'),  # evilier
         ('meta', 'name', 'DC.identifier', 'content'),  # f1000 worst
     )
     for soup in soups:
@@ -335,20 +378,24 @@ def getUri(uri, *soups):
     return uri
  
 def existing_tags(target_uri, h):#, doi, text, h):
-    params = { 'limit':200, 'uri':target_uri }
+    params = {
+        'limit':200,
+        'uri':target_uri,
+        'group':h.group,
+        'user':h.username,
+    }
     query_url = h.query_url_template.format(query=urlencode(params, True))
     obj = h.authenticated_api_query(query_url)
     rows = obj['rows']
-    tags = set()
+    tags = {}
+    unresolved_exacts = {}
     for row in rows:
-        if row['group'] != h.group:  # api query returns unwanted groups
-            continue
-        elif row['user'] != 'acct:' + h.username + '@hypothes.is':
-            continue
         for tag in row['tags']:
-            if tag.startswith('RRID'):
-                tags.add(tag)
-    return tags
+            if tag.startswith('RRID:'):
+                tags[tag] = row['id']
+            elif tag == 'RRIDCUR:Unresolved':
+                unresolved_exacts[row['target'][0]['selector'][0]['exact']] = row['id']
+    return tags, unresolved_exacts
 
 def get_pmid(doi):  # TODO
     return None
@@ -386,10 +433,25 @@ def clean_text(text):
         text = re.sub(f, r, text)
     return text
 
-def resolve_and_submit(prefix, exact, exact_for_hypothesis, suffix, target_uri, h, tags, found_rrids, existing):
-    if exact in tags:
-        print('skipping %s, already annotated' % exact)
-        return
+def rrid_resolver_xml(exact, found_rrids):
+    print('\t' + exact)
+    resolver_uri = 'https://scicrunch.org/resolver/%s.xml' % exact
+    r = requests.get(resolver_uri)
+    status_code = r.status_code
+    xml = r.content
+    print(status_code)
+    found_rrids[exact] = status_code
+    return xml, status_code, resolver_uri
+
+def check_already_submitted(exact, exact_for_hypothesis, found_rrids, tags, unresolved_exacts):
+    if exact in tags or exact_for_hypothesis in unresolved_exacts:
+        print('\tskipping %s, already annotated' % exact)
+        found_rrids[exact] = 'Already Annotated'
+        return True
+
+def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
+    prefix, exact, exact_for_hypothesis, suffix = found
+    xml, status_code, resolver_uri = resolved
 
     new_tags = []
     if exact in existing:
@@ -397,14 +459,7 @@ def resolve_and_submit(prefix, exact, exact_for_hypothesis, suffix, target_uri, 
     else:
         existing.append(exact)
 
-    found_rrids[exact] = None
-    print('\t' + exact)
-    resolver_uri = 'https://scicrunch.org/resolver/%s.xml' % exact
-    r = requests.get(resolver_uri)
-    print(r.status_code)
-    xml = r.content
-    found_rrids[exact] = r.status_code
-    if r.status_code < 300:
+    if status_code < 300:
         root = etree.fromstring(xml)
         if root.findall('error'):
             s = 'Resolver lookup failed.'
@@ -425,20 +480,22 @@ def resolve_and_submit(prefix, exact, exact_for_hypothesis, suffix, target_uri, 
                 s += '<p>%s: %s</p>' % (name, value)
             s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
             r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + [exact])
-    elif r.status_code >= 500:
+    elif status_code >= 500:
         s = 'Resolver lookup failed due to server error.'
         s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
     else:
         s = 'Resolver lookup failed.'
         s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
         r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
+    found_rrids[exact] = r.json()['links']['incontext']
+    return r
 
 def find_rrids(text):
     # first round
     regex1 = '(.{0,32})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,31})'
     matches = re.findall(regex1, text)
     for prefix, rrid, sep, id_, suffix in matches:
-        print((prefix, rrid, sep, id_, suffix))
+        #print((prefix, rrid, sep, id_, suffix))
         exact = 'RRID:' + id_
         exact_for_hypothesis = exact
         yield prefix, exact, exact_for_hypothesis, suffix
@@ -460,18 +517,29 @@ def find_rrids(text):
         exact = 'RRID:' + resolver_namespace + sep + nums
         yield prefix, exact, exact_for_hypothesis, suffix
 
-def write_stdout(target_uri, doi, pmid, results, found_rrids, head, body, text, logloc):
+def write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h):
     #print(target_uri)
     print('DOI:%s' % doi)
     print('PMID:%s' % pmid)
 
-def write_log(target_uri, doi, pmid, results, found_rrids, head, body, text, logloc):
+def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
     now = datetime.now().isoformat()[0:19].replace(':','').replace('-','')
-    fname = logloc + 'rrid-%s.log' % now
-    s = 'URL: %s\n\nResults: %s\n\nCount: %s\n\nText:\n\n%s' % ( target_uri, results, len(found_rrids), text ) 
-    with open(fname, 'wb') as f:
-        f.write(s.encode('utf-8'))
-
+    frv = list(set(found_rrids.values()))
+    if len(frv) == 1 and frv[0] == 'Already Annotated':
+        head, body, text = None, None, None
+    log = {'target_uri':target_uri,
+           'group':h.group,
+           'doi':doi,
+           'pmid':pmid,
+           'found_rrids':found_rrids,
+           'count':len(found_rrids),
+           'head':head,
+           'body':body,
+           'text':text,
+          }
+    fname = 'logs/' + 'rrid-%s.json' % now
+    with open(fname, 'wt') as f:
+        json.dump(log, f, sort_keys=True, indent=4)
 
 def export(request):
     print('starting csv export')
