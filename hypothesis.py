@@ -57,6 +57,21 @@ class HypothesisUtils:
 
     def make_annotation_payload_with_target_using_only_text_quote(self, url, prefix, exact, suffix, text, tags):
         """Create JSON payload for API call."""
+        if exact is None:
+            target = [{'source':url}]
+        else:
+            target = [{
+                "scope": [url],
+                "selector": 
+                [{
+                    "type": "TextQuoteSelector", 
+                    "prefix": prefix,
+                    "exact": exact,
+                    "suffix": suffix
+                },]
+            }]
+        if text == None:
+            text = ''
         if tags == None:
             tags = []
         payload = {
@@ -64,17 +79,7 @@ class HypothesisUtils:
             "user": 'acct:' + self.username + '@hypothes.is',
             "permissions": self.permissions,
             "group": self.group,
-            "target": 
-            [{
-                "scope": [url],
-                "selector": 
-                    [{
-                        "type": "TextQuoteSelector", 
-                        "prefix": prefix,
-                        "exact": exact,
-                        "suffix": suffix
-                        },]
-                }], 
+            "target": target, 
             "tags": tags,
             "text": text
         }
