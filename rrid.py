@@ -262,7 +262,7 @@ def rrid_POST(request, h, logloc):
 
     if doi:
         pmid = get_pmid(doi)
-        annotate_doi_pmid(target_uri, doi, pmid, h)
+        annotate_doi_pmid(target_uri, doi, pmid, h, tags)
     else:
         pmid = None
 
@@ -361,6 +361,12 @@ def getDoi(*soups):
         for args in argslist:
             doi = searchSoup(soup)(*args)
             if doi is not None:
+                if 'http' in doi:
+                    doi = '10.' + doi.split('.org/10.', 1)[-1]
+                elif doi.startswith('doi:'):
+                    doi = doi.strip('doi:')
+                elif doi.startswith('DOI:'):
+                    doi = doi.strip('DOI:')
                 return doi
 
 def getUri(uri, *soups):
@@ -393,6 +399,10 @@ def existing_tags(target_uri, h):#, doi, text, h):
         for tag in row['tags']:
             if tag.startswith('RRID:'):
                 tags[tag] = row['id']
+            elif tag.startswith('PMID:'):
+                tags[tag] = row['id']
+            elif tag.startswith('DOI:'):
+                tags[tag] = row['id']
             elif tag == 'RRIDCUR:Unresolved':
                 unresolved_exacts[row['target'][0]['selector'][0]['exact']] = row['id']
     return tags, unresolved_exacts
@@ -400,9 +410,27 @@ def existing_tags(target_uri, h):#, doi, text, h):
 def get_pmid(doi):  # TODO
     return None
 
-def annotate_doi_pmid(target_uri, doi, pmid, h):  # TODO
+def DOI(doi):
+    return 'https://doi.org/' + doi
+
+def PMID(pmid):
+    return pmid.replace('PMID:', 'https://www.ncbi.nlm.nih.gov/pubmed/')
+
+def annotate_doi_pmid(target_uri, doi, pmid, h, tags):  # TODO
     # need to check for existing ...
-    return None
+    doi_ = 'DOI:' + doi
+    text_list = []
+    tags_to_add = []
+    if doi_ not in tags:
+        text_list.append(DOI(doi))
+        tags_to_add.append(doi_)
+    if pmid and pmid not in tags:
+        text_list.append(PMID(pmid))
+        tags_to_add.append(pmid)
+    r = h.create_annotation_with_target_using_only_text_quote(target_uri, text='\n'.join(text_list), tags=tags_to_add)
+    print(r)
+    print(r.text)
+    return r
 
 def clean_text(text):
     # cleanup the inner text
@@ -520,7 +548,7 @@ def find_rrids(text):
 def write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h):
     #print(target_uri)
     print('DOI:%s' % doi)
-    print('PMID:%s' % pmid)
+    print(pmid)
 
 def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
     now = datetime.now().isoformat()[0:19].replace(':','').replace('-','')
