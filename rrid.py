@@ -225,81 +225,116 @@ def validaterrid(request):
 
 def rrid_wrapper(request, username, api_token, group, logloc):
     """ Receive an article, parse RRIDs, resolve them, create annotations, log results """
-    if  request.method == 'OPTIONS':
-        response = Response()
-        request_headers = request.headers['Access-Control-Request-Headers'].lower()
-        request_headers = re.findall('\w(?:[-\w]*\w)', request_headers)
-        response_headers = ['access-control-allow-origin']
-        for req_acoa_header in request_headers:
-            if req_acoa_header not in response_headers:
-                response_headers.append(req_acoa_header)
-        response_headers = ','.join(response_headers)
-        response.headers.update({
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': '%s' % response_headers
-            })
-        response.status_int = 204
-        return response
-
     h = HypothesisUtils(username=username, token=api_token, group=group)
+    if  request.method == 'OPTIONS':
+        return rrid_OPTIONS(request)
+    elif request.method == 'POST':
+        return rrid_POST(request, h, logloc)
+    else:
+        return Response(status_code=405)
 
-    dict_ = urlparse.parse_qs(request.text)
+def rrid_OPTIONS(request):
+    response = Response()
+    request_headers = request.headers['Access-Control-Request-Headers'].lower()
+    request_headers = re.findall('\w(?:[-\w]*\w)', request_headers)
+    response_headers = ['access-control-allow-origin']
+    for req_acoa_header in request_headers:
+        if req_acoa_header not in response_headers:
+            response_headers.append(req_acoa_header)
+    response_headers = ','.join(response_headers)
+    response.headers.update({
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '%s' % response_headers
+        })
+    response.status_int = 204
+    return response
+
+def rrid_POST(request, h, logloc):
+    target_uri, doi, head, body, text = process_POST_request(request)
+    running = URL_LOCK.start_uri(target_uri)
+    print(target_uri)
+    if running:
+        print('################# EARLY EXIT')
+        return running
+    cleaned_text = clean_text(text)
+    tags = existing_tags(target_uri, h)
+
+    if doi:
+        pmid = get_pmid(doi)
+        annotate_doi_pmid(target_uri, doi, pmid, h)
+    else:
+        pmid = None
+
+    found_rrids = {}
+    existing = []
+    for prefix, exact, exact_for_hypothesis, suffix in find_rrids(cleaned_text):
+        resolve_and_submit(prefix, exact, exact_for_hypothesis, suffix, target_uri, h, tags, found_rrids, existing)
+
+    results = ', '.join(found_rrids.keys())
+    write_stdout(target_uri, doi, pmid, results, found_rrids, head, body, text, logloc)
+    write_log(target_uri, doi, pmid, results, found_rrids, head, body, text, logloc)
+
+    r = Response(results)
+    r.content_type = 'text/plain'
+    r.headers.update({
+        'Access-Control-Allow-Origin':'*',
+    })
+
+    URL_LOCK.stop_uri(target_uri)
+    return r
+def process_POST_request(request):
     def htmlify(thing): return '<html>' + thing + '</html>'
+    dict_ = urlparse.parse_qs(request.text)
+    uri = dict_['uri'][0]
     head = htmlify(dict_['head'][0])
     body = htmlify(dict_['body'][0])
-    html = dict_['data'][0]
+    text = dict_['data'][0]
 
     headsoup = BeautifulSoup(head, 'lxml')
     bodysoup = BeautifulSoup(body, 'lxml')
+           
+    target_uri = getUri(uri, headsoup, bodysoup)
+    doi = getDoi(headsoup, bodysoup)
+    return target_uri, doi, head, body, text
 
-    def searchSoup(soup):
-        def search(tag, prop, val, key):
-            matches = soup.find_all(tag, {prop:val})
-            if matches:
-                return matches[0][key]
-        return search
+def searchSoup(soup):
+    def search(tag, prop, val, key):
+        matches = soup.find_all(tag, {prop:val})
+        if matches:
+            return matches[0][key]
+    return search
 
-    def getDoi():
-        argslist = (  # these go in order so best returns first
-            # TODO bind a handler for these as well...
-            ('meta', 'name', 'DC.Identifier', 'content'),  # elife pmc etc.
-            ('meta', 'name', 'DOI', 'content'),  # nature pref
-            ('meta', 'name', 'dc.identifier', 'content'),  # nature
-            ('meta', 'name', 'citation_doi', 'content'), # wiley jove f1000 ok
-            ('a', 'class', 'doi', 'href'),  # evilier
-            ('meta', 'name', 'DC.identifier', 'content'),  # f1000 worst
-        )
-        for soup in (headsoup, bodysoup):
-            for args in argslist:
-                doi = searchSoup(soup)(*args)
-                if doi is not None:
-                    return doi
+def getDoi(*soups):
+    argslist = (  # these go in order so best returns first
+        # TODO bind a handler for these as well...
+        ('meta', 'name', 'DC.Identifier', 'content'),  # elife pmc etc.
+        ('meta', 'name', 'DOI', 'content'),  # nature pref
+        ('meta', 'name', 'dc.identifier', 'content'),  # nature
+        ('meta', 'name', 'citation_doi', 'content'), # wiley jove f1000 ok
+        ('a', 'class', 'doi', 'href'),  # evilier
+        ('meta', 'name', 'DC.identifier', 'content'),  # f1000 worst
+    )
+    for soup in soups:
+        for args in argslist:
+            doi = searchSoup(soup)(*args)
+            if doi is not None:
+                return doi
 
-    def getUri():
-        uri = dict_['uri'][0]
-        argslist = (
-            ('meta', 'property', 'og:url', 'content'),
-            ('link', 'rel', 'canonical', 'href'),
-        )
-        for soup in (headsoup, bodysoup):
-            for args in argslist:
-                cu = searchSoup(soup)(*args)
-                if cu is not None and cu.startswith('http'):
-                    if cu != uri:
-                        print('canonical and uri do not match, preferring canonical', cu, uri)
-                    return cu
-        return uri
-            
-    target_uri = getUri()
-    doi = getDoi()
-    print(target_uri)
-    print('DOI:%s' % doi)
-
-    existing = URL_LOCK.start_uri(target_uri)
-    if existing:
-        print('################# EARLY EXIT')
-        return existing
-
+def getUri(uri, *soups):
+    argslist = (
+        ('meta', 'property', 'og:url', 'content'),
+        ('link', 'rel', 'canonical', 'href'),
+    )
+    for soup in soups:
+        for args in argslist:
+            cu = searchSoup(soup)(*args)
+            if cu is not None and cu.startswith('http'):
+                if cu != uri:
+                    print('canonical and uri do not match, preferring canonical', cu, uri)
+                return cu
+    return uri
+ 
+def existing_tags(target_uri, h):#, doi, text, h):
     params = { 'limit':200, 'uri':target_uri }
     query_url = h.query_url_template.format(query=urlencode(params, True))
     obj = h.authenticated_api_query(query_url)
@@ -313,9 +348,18 @@ def rrid_wrapper(request, username, api_token, group, logloc):
         for tag in row['tags']:
             if tag.startswith('RRID'):
                 tags.add(tag)
+    return tags
 
-    # cleanup the html
-    text = html.replace('–','-')
+def get_pmid(doi):  # TODO
+    return None
+
+def annotate_doi_pmid(target_uri, doi, pmid, h):  # TODO
+    # need to check for existing ...
+    return None
+
+def clean_text(text):
+    # cleanup the inner text
+    text = text.replace('–','-')
     text = text.replace('‐','-')  # what the wat
     text = text.replace('\xa0',' ')  # nonbreaking space fix
 
@@ -340,105 +384,94 @@ def rrid_wrapper(request, username, api_token, group, logloc):
 
     for f, r in fixes:
         text = re.sub(f, r, text)
+    return text
 
-    found_rrids = {}
-    try:
-        existing = []
-        def post_match_logic(prefix, exact, exact_for_hypothesis, suffix):
-            if exact in tags:
-                print('skipping %s, already annotated' % exact)
-                return
+def resolve_and_submit(prefix, exact, exact_for_hypothesis, suffix, target_uri, h, tags, found_rrids, existing):
+    if exact in tags:
+        print('skipping %s, already annotated' % exact)
+        return
 
-            new_tags = []
-            if exact in existing:
-                new_tags.append('RRIDCUR:Duplicate')
-            else:
-                existing.append(exact)
+    new_tags = []
+    if exact in existing:
+        new_tags.append('RRIDCUR:Duplicate')
+    else:
+        existing.append(exact)
 
-            found_rrids[exact] = None
-            print('\t' + exact)
-            resolver_uri = 'https://scicrunch.org/resolver/%s.xml' % exact
-            r = requests.get(resolver_uri)
-            print(r.status_code)
-            xml = r.content
-            found_rrids[exact] = r.status_code
-            if r.status_code < 300:
-                root = etree.fromstring(xml)
-                if root.findall('error'):
-                    s = 'Resolver lookup failed.'
-                    s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
-                    print('ERROR, rrid unresolved')
-                else:
-                    data_elements = root.findall('data')[0]
-                    s = ''
-                    data_elements = [(e.find('name').text, e.find('value').text) for e in data_elements]  # these shouldn't duplicate
-                    citation = [(n, v) for n, v in  data_elements if n == 'Proper Citation']
-                    name = [(n, v) for n, v in  data_elements if n == 'Name']
-                    data_elements = citation + name + sorted([(n, v) for n, v in  data_elements if (n != 'Proper Citation' or n != 'Name') and v is not None])
-                    for name, value in data_elements:
-                        if (name == 'Reference' or name == 'Mentioned In Literature') and value is not None and value.startswith('<a class'):
-                            if len(value) > 500:
-                                continue  # nif-0000-30467 fix keep those pubmed links short!
-                        s += '<p>%s: %s</p>' % (name, value)
-                    s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                    r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + [exact])
-            elif r.status_code >= 500:
-                s = 'Resolver lookup failed due to server error.'
-                s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-            else:
-                s = 'Resolver lookup failed.'
-                s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-                r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
+    found_rrids[exact] = None
+    print('\t' + exact)
+    resolver_uri = 'https://scicrunch.org/resolver/%s.xml' % exact
+    r = requests.get(resolver_uri)
+    print(r.status_code)
+    xml = r.content
+    found_rrids[exact] = r.status_code
+    if r.status_code < 300:
+        root = etree.fromstring(xml)
+        if root.findall('error'):
+            s = 'Resolver lookup failed.'
+            s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
+            print('ERROR, rrid unresolved')
+        else:
+            data_elements = root.findall('data')[0]
+            s = ''
+            data_elements = [(e.find('name').text, e.find('value').text) for e in data_elements]  # these shouldn't duplicate
+            citation = [(n, v) for n, v in  data_elements if n == 'Proper Citation']
+            name = [(n, v) for n, v in  data_elements if n == 'Name']
+            data_elements = citation + name + sorted([(n, v) for n, v in  data_elements if (n != 'Proper Citation' or n != 'Name') and v is not None])
+            for name, value in data_elements:
+                if (name == 'Reference' or name == 'Mentioned In Literature') and value is not None and value.startswith('<a class'):
+                    if len(value) > 500:
+                        continue  # nif-0000-30467 fix keep those pubmed links short!
+                s += '<p>%s: %s</p>' % (name, value)
+            s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + [exact])
+    elif r.status_code >= 500:
+        s = 'Resolver lookup failed due to server error.'
+        s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+    else:
+        s = 'Resolver lookup failed.'
+        s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+        r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
 
-        # first round
-        regex1 = '(.{0,32})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,31})'
-        matches = re.findall(regex1, text)
-        for prefix, rrid, sep, id_, suffix in matches:
-            print((prefix, rrid, sep, id_, suffix))
-            exact = 'RRID:' + id_
-            exact_for_hypothesis = exact
-            post_match_logic(prefix, exact, exact_for_hypothesis, suffix)
+def find_rrids(text):
+    # first round
+    regex1 = '(.{0,32})(RRID(:|\)*,*)[ \t]*)(\w+[_\-:]+[\w\-]+)([^\w].{0,31})'
+    matches = re.findall(regex1, text)
+    for prefix, rrid, sep, id_, suffix in matches:
+        print((prefix, rrid, sep, id_, suffix))
+        exact = 'RRID:' + id_
+        exact_for_hypothesis = exact
+        yield prefix, exact, exact_for_hypothesis, suffix
 
-        # second round
-        orblock = '(' + '|'.join(col0(prefixes)) + ')'
-        sep = '(:|_)([ \t]*)'
-        regex2 = '(.{0,32})(?:' + orblock + '{sep}(\d+)|(CVCL){sep}(\w+))([^\w].{{0,31}})'.format(sep=sep)  # the first 0,32 always greedy matches???
-        matches2 = re.findall(regex2, text)  # FIXME this doesn't work since our prefix/suffix can be 'wrong'
-        for prefix, namespace, sep, spaces, nums, cvcl, cvcl_sep, cvcl_spaces, cvcl_nums, suffix in matches2:
-            if cvcl:
-                prefix, namespace, sep, spaces, nums = cvcl, cvcl_sep, cvcl_spaces, cvcl_nums  # sigh
-            #print((prefix, namespace, sep, spaces, nums, suffix))
-            if re.match(regex1, ''.join((prefix, namespace, sep, spaces, nums, suffix))) is not None:
-                #print('already matched')
-                continue  # already caught it above and don't want to add it again
-            exact_for_hypothesis = namespace + sep + nums
-            resolver_namespace = prefix_lookup[namespace]
-            exact = 'RRID:' + resolver_namespace + sep + nums
-            post_match_logic(prefix, exact, exact_for_hypothesis, suffix)
+    # second round
+    orblock = '(' + '|'.join(col0(prefixes)) + ')'
+    sep = '(:|_)([ \t]*)'
+    regex2 = '(.{0,32})(?:' + orblock + '{sep}(\d+)|(CVCL){sep}(\w+))([^\w].{{0,31}})'.format(sep=sep)  # the first 0,32 always greedy matches???
+    matches2 = re.findall(regex2, text)  # FIXME this doesn't work since our prefix/suffix can be 'wrong'
+    for prefix, namespace, sep, spaces, nums, cvcl, cvcl_sep, cvcl_spaces, cvcl_nums, suffix in matches2:
+        if cvcl:
+            prefix, namespace, sep, spaces, nums = cvcl, cvcl_sep, cvcl_spaces, cvcl_nums  # sigh
+        #print((prefix, namespace, sep, spaces, nums, suffix))
+        if re.match(regex1, ''.join((prefix, namespace, sep, spaces, nums, suffix))) is not None:
+            #print('already matched')
+            continue  # already caught it above and don't want to add it again
+        exact_for_hypothesis = namespace + sep + nums
+        resolver_namespace = prefix_lookup[namespace]
+        exact = 'RRID:' + resolver_namespace + sep + nums
+        yield prefix, exact, exact_for_hypothesis, suffix
 
-    except:
-        print(traceback.print_exc())
+def write_stdout(target_uri, doi, pmid, results, found_rrids, head, body, text, logloc):
+    #print(target_uri)
+    print('DOI:%s' % doi)
+    print('PMID:%s' % pmid)
 
-    results = ', '.join(found_rrids.keys())
-    r = Response(results)
-    r.content_type = 'text/plain'
-    r.headers.update({
-        'Access-Control-Allow-Origin': '*'
-        })
+def write_log(target_uri, doi, pmid, results, found_rrids, head, body, text, logloc):
+    now = datetime.now().isoformat()[0:19].replace(':','').replace('-','')
+    fname = logloc + 'rrid-%s.log' % now
+    s = 'URL: %s\n\nResults: %s\n\nCount: %s\n\nText:\n\n%s' % ( target_uri, results, len(found_rrids), text ) 
+    with open(fname, 'wb') as f:
+        f.write(s.encode('utf-8'))
 
-    try:
-        now = datetime.now().isoformat()[0:19].replace(':','').replace('-','')
-        fname = logloc + 'rrid-%s.log' % now
-        s = 'URL: %s\n\nResults: %s\n\nCount: %s\n\nText:\n\n%s' % ( target_uri, results, len(found_rrids), html ) 
-        with open(fname, 'wb') as f:
-            f.write(s.encode('utf-8'))
-    except:
-        print(traceback.print_exc())
-
-    URL_LOCK.stop_uri(target_uri)
-    #embed()
-    return r
 
 def export(request):
     print('starting csv export')
