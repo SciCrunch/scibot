@@ -507,8 +507,8 @@ def find_rrids(text):
     matches2 = re.findall(regex2, text)  # FIXME this doesn't work since our prefix/suffix can be 'wrong'
     for prefix, namespace, sep, spaces, nums, cvcl, cvcl_sep, cvcl_spaces, cvcl_nums, suffix in matches2:
         if cvcl:
-            prefix, namespace, sep, spaces, nums = cvcl, cvcl_sep, cvcl_spaces, cvcl_nums  # sigh
-        #print((prefix, namespace, sep, spaces, nums, suffix))
+            #print('\t\t', (prefix, namespace, sep, spaces, nums, cvcl, cvcl_sep, cvcl_spaces, cvcl_nums, suffix))
+            namespace, sep, spaces, nums = cvcl, cvcl_sep, cvcl_spaces, cvcl_nums  # sigh
         if re.match(regex1, ''.join((prefix, namespace, sep, spaces, nums, suffix))) is not None:
             #print('already matched')
             continue  # already caught it above and don't want to add it again
