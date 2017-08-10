@@ -473,7 +473,6 @@ def clean_text(text):
     fixes.append((r'\(RRID\):', r'RRID:'))
 
     for f, r in fixes:
-        print(f, r)
         text = re.sub(f, r, text)
     return text
 
