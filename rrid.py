@@ -174,8 +174,7 @@ URL_LOCK = Locker(send)
 bookmarklet_base = r"""
 javascript:(function(){var xhr=new XMLHttpRequest();
 
-var params=
-'uri='+location.href+
+var params='uri='+location.href+
 '&head='+encodeURIComponent(document.head.innerHTML)+
 '&body='+encodeURIComponent(document.body.innerHTML)+
 '&data='+encodeURIComponent(document.body.innerText);
@@ -186,37 +185,37 @@ xhr.setRequestHeader('Access-Control-Allow-Origin','*');
 xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};
 xhr.send(params)}());
 """
-bookmarklet_base = bookmarklet_base.replace('\n','')
 
 html_base = """<html>
 <head>
 <style>
+h1 { font-family: Arial,sans-serif; color: #777; font-size: 36px; font-weight: normal }
 body { font-family: verdana; margin:.75in }
 </style>
-<title>rrid bookmarklet</title></head>
+<title>SciBot bookmarklet</title></head>
 <body>
-<p>To install the bookmarklet, drag this link -- <a href="%s">rrid</a> -- to your bookmarks bar.</p>
+<h1>SciBot</h1>
+<p>To install the bookmarklet, drag this link -- <a href="%s">SciBot %s</a> -- to your bookmarks bar.</p>
 <p>If you need to copy/paste the bookmarklet's code into a bookmarklet, it's here:</p>
-<p>%s</p>
+<code>%s</code>
 </body>
 </html>
 """
 
-def bookmarklet(request):
-    """ Return text of the RRID bookmarklet """
-    text = bookmarklet_base % (request.application_url.replace('http:', 'https:'), 'rrid')
-    html = html_base % (text.replace('"', '&quot;'), text)
+def bookmarklet_wrapper(request, endpoint):
+    """ Return text of the SciBot bookmarklet """
+    code = bookmarklet_base % (request.application_url.replace('http:', 'https:'), endpoint)
+    bookmarklet = code.replace('"', '&quot;').replace('\n','')
+    html = html_base % (bookmarklet, request.host.split('.', 1)[-1], code)
     r = Response(html)
     r.content_type = 'text/html'
     return r
 
+def bookmarklet(request):
+    return bookmarklet_wrapper(request, 'rrid')
+
 def validatebookmarklet(request):
-    """ Return text of the RRID bookmarklet """
-    text = bookmarklet_base % (request.application_url.replace('http:','https:'), 'validaterrid')
-    html = html_base % (text.replace('"', '&quot;'), text)
-    r = Response(html)
-    r.content_type = 'text/html'
-    return r
+    return bookmarklet_wrapper(request, 'validaterrid')
 
 def rrid(request):
     return rrid_wrapper(request, username, api_token, group, 'logs/rrid/')
