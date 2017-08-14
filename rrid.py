@@ -339,8 +339,13 @@ def process_POST_request(request):
     return target_uri, doi, head, body, text
 
 def searchSoup(soup):
-    def search(tag, prop, val, key):
-        matches = soup.find_all(tag, {prop:val})
+    def search(tag, prop, val, key, additional_prop_vals=None):
+        if additional_prop_vals is None:
+            pvs = {prop:val}
+        else:
+            additional_prop_vals.update({prop:val})
+            pvs = additional_prop_vals
+        matches = soup.find_all(tag, pvs)
         if matches:
             return matches[0][key]
     return search
@@ -354,7 +359,9 @@ def getDoi(*soups):
         ('meta', 'name', 'citation_doi', 'content'), # wiley jove f1000 ok
         ('a', 'class', 'doi', 'href'),  # evilier
         ('a', 'class', 'S_C_ddDoi', 'href'),  # evilier
+        ('a', 'id', 'ddDoi', 'href'),  # evilier
         ('meta', 'name', 'DC.identifier', 'content'),  # f1000 worst
+        ('meta', 'name', 'dc.Identifier', 'content', {'scheme':'doi'}),  # tandf
     )
     for soup in soups:
         for args in argslist:
@@ -407,7 +414,14 @@ def existing_tags(target_uri, h):#, doi, text, h):
     return tags, unresolved_exacts
 
 def get_pmid(doi):  # TODO
-    return None
+    params={'idtype':'auto', 'format':'json', 'Ids':doi, 'convert-button':'Convert'}
+    pj = requests.post('https://www.ncbi.nlm.nih.gov/pmc/pmctopmid/', params=params).json()
+    print(pj)
+    for rec in pj['records']:
+        try:
+            return 'PMID:' + rec['pmid']
+        except KeyError:
+            pass
 
 def DOI(doi):
     return 'https://doi.org/' + doi
@@ -426,10 +440,11 @@ def annotate_doi_pmid(target_uri, doi, pmid, h, tags):  # TODO
     if pmid and pmid not in tags:
         text_list.append(PMID(pmid))
         tags_to_add.append(pmid)
-    r = h.create_annotation_with_target_using_only_text_quote(target_uri, text='\n'.join(text_list), tags=tags_to_add)
-    print(r)
-    print(r.text)
-    return r
+    if tags_to_add:
+        r = h.create_annotation_with_target_using_only_text_quote(target_uri, text='\n'.join(text_list), tags=tags_to_add)
+        print(r)
+        print(r.text)
+        return r
 
 def clean_text(text):
     # cleanup the inner text
@@ -453,7 +468,7 @@ def clean_text(text):
     prefixes_digit = [r'([^\w])(%s)' % _ for _ in ('AB', 'SCR', 'MGI')]
     for p in prefixes_digit:
         fixes.extend(make_cartesian_product(p))
-    fixes.extend(make_cartesian_product(r'(CVCL)', r'(\w{0,1}\d+)'))  # FIXME r'(\w{0,5})' better \w+ ok
+    fixes.extend(make_cartesian_product(r'([^\w])(CVCL)', r'([0-9A-Z]+)'))  # FIXME r'(\w{0,5})' better \w+ ok
     fixes.append((r'\(RRID\):', r'RRID:'))
 
     for f, r in fixes:
