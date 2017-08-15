@@ -1,4 +1,4 @@
-# RRID (aka SciBot)
+# SciBot
 
 A tool and companion service used to:
 
@@ -10,20 +10,12 @@ A tool and companion service used to:
 
 * Create the Hypothesis account under which annotations will be created
 * Generate an api token at https://hypothes.is/profile/developer
-* Specify HOST, PORT, API TOKEN, and USERNAME
-* python rrid.py
-* note and install missing libraries
-* python rrid.py
+* Create a group to store the annotations at https://hypothes.is/groups/new
+* See [Setup on amazon](## Setup on amazon)
 
 ## Capturing the bookmarklet
 
-Visit http://HOST:PORT/bookmarklet which produces this page:
-
-  To install the bookmarklet, drag this link -- rrid -- to your bookmarks bar.
-
-  If you need to copy/paste the bookmarklet's code into a bookmarklet, it's here:
-
-  javascript:(function(){var xhr=new XMLHttpRequest();var params='uri='+location.href+'&data='+encodeURIComponent(document.body.innerText);xhr.open('POST','http://localhost:8080/rrid',true);xhr.setRequestHeader('Content-type','application/x-www-form-urlencoded');xhr.setRequestHeader('Access-Control-Allow-Origin','*');xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: '+xhr.responseText)};xhr.send(params)}());
+Visit http://HOST:PORT/bookmarklet and follow the instructions.
 
 ## Using the bookmarklet
 
@@ -35,7 +27,7 @@ The found RRIDs are logged to the JavaScript console
 
 ## Checking results on the server
 
-The found RRIDs are logged to timestamped files, along with the text of the article that was scanned for RRIDs
+The found RRIDs are logged to timestamped files, along with the text and html of the article that was scanned for RRIDs
 
 ## Setup on amazon
 
