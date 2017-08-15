@@ -11,7 +11,7 @@ A tool and companion service used to:
 * Create the Hypothesis account under which annotations will be created
 * Generate an api token at https://hypothes.is/profile/developer
 * Create a group to store the annotations at https://hypothes.is/groups/new
-* See [Setup on amazon](## Setup on amazon)
+* See [Setup on amazon](#setup-on-amazon)
 
 ## Capturing the bookmarklet
 
