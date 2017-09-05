@@ -8,9 +8,9 @@ A tool and companion service used to:
 
 ## Getting Started
 
-* Create the Hypothesis account under which annotations will be created
-* Generate an api token at https://hypothes.is/profile/developer
-* Create a group to store the annotations at https://hypothes.is/groups/new
+* [Create a Hypothesis](https://web.hypothes.is/start/) account which will post the annotations.
+* Generate an api token at https://hypothes.is/profile/developer (must be logged in to see page).
+* Create a group to store the annotations at https://hypothes.is/groups/new (must be logged in to see page).
 * See [Setup on amazon](#setup-on-amazon)
 
 ## Capturing the bookmarklet
