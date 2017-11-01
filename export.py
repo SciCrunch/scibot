@@ -9,6 +9,7 @@ from collections import defaultdict
 from collections import namedtuple, defaultdict
 import requests
 from lxml import etree
+from pyontutils.utils import noneMembers, anyMembers
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
@@ -17,7 +18,7 @@ group = environ.get('RRIDBOT_GROUP', '__world__')
 group_public = environ.get('RRIDBOT_GROUP_PUBLIC', '__world__')
 print(api_token, username, group)  # sanity check
 
-get_annos = Memoizer(api_token, username, group, memoization_file='/tmp/scibot-annotations.pickle')
+get_annos = Memoizer(api_token, username, group, memoization_file='/tmp/real-scibot-annotations.pickle')
 
 def get_proper_citation(xml):
     root = etree.fromstring(xml)
@@ -212,13 +213,19 @@ def export_json_impl():
 
 class RRIDCuration(HypothesisHelper):
     resolver = 'http://scicrunch.org/resolver/'
-    REPLY_TAG = 'RRIDCur:Released-Parent'
-    SUCCESS_TAG = 'RRIDCur:Released'
+    docs_link = 'http://scicrunch.org/resources'  # TODO update with explication of the tags
+    REPLY_TAG = 'RRIDCUR:Released-Parent'
+    SUCCESS_TAG = 'RRIDCUR:Released'
+    skip_tags = 'Duplicate', 'Unrecognized'
+    skip_anno_tags = 'InsufficientMetadata',  # tags indicating that we should not release to public
+    alert_tags = 'Incorrect',  # tags indicating that the RRID may be wrong...
+    # if there is not a replacement RRID listed along with this tag then alert that we could find no RRID at all for this
     h_private = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
     h_public = HypothesisUtils(username=username, token=api_token, group=group_public, max_results=100000)
     public_annos = {}  # for
     private_replies = {}  # in cases where a curator made the annotation
     objects = {}
+    identifiers = {}  # paper id: {uri:, doi:, pmid:}
 
     @property
     def uri(self): return self._anno.uri
@@ -228,19 +235,23 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def rrid(self):  # FIXME
+        # example of case where I need to check for RRIDCUR:Incorrect to make the right determination
+        "-3zMMjc7EeeTBfeviH2gHg"
+        #https://hyp.is/-3zMMjc7EeeTBfeviH2gHg/www.sciencedirect.com/science/article/pii/S0896627317303069
         maybe = [t for t in self.tags if 'RRID:' in t]
         if maybe:
             return maybe[0]
 
     @property
     def isAstNode(self):
-        if self._type == 'annotation' and self.rrid:
+        if self._type == 'annotation' and self.rrid and noneMembers(self._tags, *self.skip_anno_tags):
             return True
         else:
             return False
 
     @property
     def proper_citation(self):
+        return 'NOT RIGHT NOW'
         if self.isAstNode:
             if not hasattr(self, '_xml'):
                 resp = requests.get(self.resolver + self.rrid + '.xml')
@@ -278,15 +289,19 @@ class RRIDCuration(HypothesisHelper):
     @property
     def public_text(self):
         if self.isAstNode:
+            curator_text = f'<p>Curator: {self._anno.user}</p>\n' if self._anno.user != self.h_private.username else ''
             resolver_link = f'{self.resolver}{self.rrid}'
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             nt2_link = f'http://nt2.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
-            return (f'<h1>{self.proper_citation}</h1>\n'
-                    f'<p><a href={resolver_link}></a>{self.rrid}<p>\n'
-                    f'<p><a href={resolver_xml_link}></a>SciCrunch xml<p>\n'
-                    f'<p><a href={nt2_link}></a>N2T resolver<p>\n'
-                    f'<p><a href={idents_link}></a>identifiers.org resolver<p>')
+            return (f'Resource used\n'
+                    f'{curator_text}'
+                    f'<p>{self.proper_citation}</p>\n'
+                    f'<p><a href={resolver_link}>{self.rrid}</a><p>\n'
+                    f'<p><a href={resolver_xml_link}>SciCrunch xml</a><p>\n'
+                    f'<p><a href={nt2_link}>N2T resolver</a><p>\n'
+                    f'<p><a href={idents_link}>identifiers.org resolver</a><p>'
+                    f'<p><a href={self.docs_link}>What is this?</a></p>')
 
     @property
     def tags(self):
@@ -337,17 +352,17 @@ class RRIDCuration(HypothesisHelper):
     def post_public(self):
         payload = self.public_payload
         if payload:
-            response = h_public.post_annotation(payload)
+            response = self.h_public.post_annotation(payload)
             self._public_response = response
-            self._public_anno = HypothesisAnnotation(response)
+            self._public_anno = HypothesisAnnotation(response.json())
             self.cls.public_annos[self._public_anno.id] = self._public_anno
 
     def patch_private(self):
         if self.public_id is not None:
             if self._anno.user != self.h_private.username:
-                response = h_private.post_annotation(self.private_payload)
+                response = self.h_private.post_annotation(self.private_payload)
             else:
-                response = h_private.patch_annotation(self.id, self.private_payload)
+                response = self.h_private.patch_annotation(self.id, self.private_payload)
             self._private_response = response
 
     def __repr__(self, depth=0):
@@ -355,6 +370,10 @@ class RRIDCuration(HypothesisHelper):
         t = ' ' * 4 * depth + start
 
         parent_id =  f"\n{t}parent_id:    {self.parent.id} {self.__class__.__name__}.byId('{self.parent.id}')" if self.parent else ''
+        uri_text =   f'\n{t}uri:          {self.uri}' if self.uri else ''
+        doi_text =   f'\n{t}doi:          {self.doi}' if self.doi else ''
+        pmid_text =  f'\n{t}pmid:         {self.pmid}' if self.pmid else ''
+        rrid_text =  f'\n{t}rrid:         {self.rrid}' if self.rrid else ''
         exact_text = f'\n{t}exact:        {self.exact}' if self.exact else ''
 
         text_align = 'text:         '
@@ -380,6 +399,10 @@ class RRIDCuration(HypothesisHelper):
                 f'\n{t}user:         {self._anno.user}'
                 f'\n{t}isAstNode:    {self.isAstNode}'
                 f'{parent_id}'
+                f'{uri_text}'
+                f'{doi_text}'
+                f'{pmid_text}'
+                f'{rrid_text}'
                 f'{exact_text}'
                 f'{text_text}'
                 f'{tag_text}'
@@ -391,7 +414,7 @@ class RRIDCuration(HypothesisHelper):
 def public_dump():
     from IPython import embed
     annos = get_annos()
-    rc = [RRIDCuration(a, annos) for a in annos]
+    rc = [RRIDCuration(a, annos) for a in annos[:100]]
     embed()
 
 def oldmain():
