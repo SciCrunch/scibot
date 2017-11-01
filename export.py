@@ -2,19 +2,22 @@
 from __future__ import print_function
 import re
 import csv
+import pickle
 from os import environ
 from datetime import date
 from collections import defaultdict
 from collections import namedtuple, defaultdict
-#import requests
-#from lxml import etree
-from hypothesis import HypothesisUtils, HypothesisAnnotation
+import requests
+from lxml import etree
+from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
 group = environ.get('RRIDBOT_GROUP', '__world__')
-
+group_public = environ.get('RRIDBOT_GROUP_PUBLIC', '__world__')
 print(api_token, username, group)  # sanity check
+
+get_annos = Memoizer(api_token, username, group, memoization_file='/tmp/scibot-annotations.pickle')
 
 def get_proper_citation(xml):
     root = etree.fromstring(xml)
@@ -205,12 +208,206 @@ def export_json_impl():
     DATE = date.today().strftime('%Y-%m-%d')
     return output_json, DATE
 
-def main():
+### URG
+
+class RRIDCuration(HypothesisHelper):
+    resolver = 'http://scicrunch.org/resolver/'
+    REPLY_TAG = 'RRIDCur:Released-Parent'
+    SUCCESS_TAG = 'RRIDCur:Released'
+    h_private = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
+    h_public = HypothesisUtils(username=username, token=api_token, group=group_public, max_results=100000)
+    public_annos = {}  # for
+    private_replies = {}  # in cases where a curator made the annotation
+    objects = {}
+
+    @property
+    def uri(self): return self._anno.uri
+
+    @property
+    def target(self): return self._anno.target
+
+    @property
+    def rrid(self):  # FIXME
+        maybe = [t for t in self.tags if 'RRID:' in t]
+        if maybe:
+            return maybe[0]
+
+    @property
+    def isAstNode(self):
+        if self._type == 'annotation' and self.rrid:
+            return True
+        else:
+            return False
+
+    @property
+    def proper_citation(self):
+        if self.isAstNode:
+            if not hasattr(self, '_xml'):
+                resp = requests.get(self.resolver + self.rrid + '.xml')
+                self._xml = resp.content
+            return get_proper_citation(self._xml)
+
+    @property
+    def doi(self):
+        return None  # TODO
+
+    @property
+    def pmid(self):
+        return None  # TODO
+
+    @property
+    def public_id(self):
+        if hasattr(self, '_public_anno') and self._public_anno is not None:
+            return self._public_anno.id
+
+    @property
+    def public_user(self):
+        return 'acct:' + self.h_public.username + '@hypothesis.is'
+
+    @property
+    def public_tags(self):
+        if self._anno.user != self.h_private.username:
+            if self.rrid:
+                return [self.rrid, 'RRIDCur:Validated']
+        else:
+            add_tags = []
+            for reply in self.replies:
+                add_tags += reply._tags
+            return self._tags + add_tags
+
+    @property
+    def public_text(self):
+        if self.isAstNode:
+            resolver_link = f'{self.resolver}{self.rrid}'
+            resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
+            nt2_link = f'http://nt2.net/{self.rrid}'
+            idents_link = f'http://identifiers.org/{self.rrid}'
+            return (f'<h1>{self.proper_citation}</h1>\n'
+                    f'<p><a href={resolver_link}></a>{self.rrid}<p>\n'
+                    f'<p><a href={resolver_xml_link}></a>SciCrunch xml<p>\n'
+                    f'<p><a href={nt2_link}></a>N2T resolver<p>\n'
+                    f'<p><a href={idents_link}></a>identifiers.org resolver<p>')
+
+    @property
+    def tags(self):
+        if self._anno.user != self.h_private.username:
+            return [self.REPLY_TAG]
+        else:
+            return self._tags + [self.SUCCESS_TAG]
+
+    @property
+    def text(self):
+        reference = f'<p>Public Version: <a href=https://hyp.is/{self.public_id}>{self.public_id}</a></p>'
+        if self._anno.user != self.h_private.username:
+            return reference
+        else:
+            return reference + self._text
+
+    @property
+    def public_payload(self):
+        if self.isAstNode:
+            return {
+                'uri':self.uri,
+                'target':self.target,
+                'group':self.h_public.group,
+                'user':self.public_user,
+                'permissions':self.h_public.permissions,
+                'tags':self.public_tags,
+                'text':self.public_text,
+            }
+
+    @property
+    def private_payload(self):
+        if self._anno.user != self.h_private.username:
+            payload = {
+                'group':self.h_private.group,
+                'permissions':self.h_private.permissions,
+                'references':[self.id],  # this matches what the client does
+                'target':[{'source':self.uri}],
+                'tags':self.tags,
+                'text':self.text,
+                'uri':self.uri,
+            }
+        else:
+            payload = {
+                'tags':self.tags,
+                'text':self.text,
+            }
+
+    def post_public(self):
+        payload = self.public_payload
+        if payload:
+            response = h_public.post_annotation(payload)
+            self._public_response = response
+            self._public_anno = HypothesisAnnotation(response)
+            self.cls.public_annos[self._public_anno.id] = self._public_anno
+
+    def patch_private(self):
+        if self.public_id is not None:
+            if self._anno.user != self.h_private.username:
+                response = h_private.post_annotation(self.private_payload)
+            else:
+                response = h_private.patch_annotation(self.id, self.private_payload)
+            self._private_response = response
+
+    def __repr__(self, depth=0):
+        start = '|' if depth else ''
+        t = ' ' * 4 * depth + start
+
+        parent_id =  f"\n{t}parent_id:    {self.parent.id} {self.__class__.__name__}.byId('{self.parent.id}')" if self.parent else ''
+        exact_text = f'\n{t}exact:        {self.exact}' if self.exact else ''
+
+        text_align = 'text:         '
+        lp = f'\n{t}'
+        text_line = lp + ' ' * len(text_align)
+        text_text = lp + text_align + self.text.replace('\n', text_line) if self.text else ''
+
+        tag_text =   f'\n{t}tags:         {self.tags}' if self.tags else ''
+
+        ptag_text =  f'\n{t}ptags:        {self.public_tags}' if self.public_tags else ''
+
+        ptext_align = 'ptext:        '
+        lp = f'\n{t}'
+        ptext_line = lp + ' ' * len(ptext_align)
+        ptext = lp + ptext_align + self.public_text.replace('\n', ptext_line) if self.public_text else ''
+
+        replies = ''.join(r.__repr__(depth + 1) for r in self.replies)
+        rep_ids = f'\n{t}replies:      ' + ' '.join(f"{self.__class__.__name__}.byId('{r.id}')"
+                                                    for r in self.replies)
+        replies_text = (f'\n{t}replies:{replies}' if self.reprReplies else rep_ids) if replies else ''
+        return (f'\n{t.replace("|","")}*--------------------'
+                f"\n{t}{self.__class__.__name__ + ':':<14}{self.shareLink} {self.__class__.__name__}.byId('{self.id}')"
+                f'\n{t}user:         {self._anno.user}'
+                f'\n{t}isAstNode:    {self.isAstNode}'
+                f'{parent_id}'
+                f'{exact_text}'
+                f'{text_text}'
+                f'{tag_text}'
+                f'{ptext}'
+                f'{ptag_text}'
+                f'{replies_text}'
+                f'\n{t}____________________')
+
+def public_dump():
+    from IPython import embed
+    annos = get_annos()
+    rc = [RRIDCuration(a, annos) for a in annos]
+    embed()
+
+def oldmain():
     output_rows, DATE = export_impl()
     with open('RRID-data-%s.csv' % DATE, 'wt') as f:
         writer = csv.writer(f, lineterminator='\n')
         writer.writerows(sorted(output_rows))
 
+    import json
+    output_json, DATE = export_json_impl()
+    with open('RRID-data-%s.json' % DATE, 'wt') as f:
+        json.dump(output_json, f, sort_keys=True, indent=4)
+
+def main():
+    public_dump()
+    return
     import json
     output_json, DATE = export_json_impl()
     with open('RRID-data-%s.json' % DATE, 'wt') as f:
