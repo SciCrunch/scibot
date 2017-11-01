@@ -22,7 +22,7 @@ from typing import Callable, Iterable, Tuple, Any, Generator
 from lxml import etree
 from curio import Channel, run
 from pyramid.response import Response
-from hypothesis import HypothesisUtils
+from hyputils.hypothesis import HypothesisUtils
 from export import export_impl, export_json_impl
 from IPython import embed
 from bs4 import BeautifulSoup
