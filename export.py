@@ -216,9 +216,10 @@ class RRIDCuration(HypothesisHelper):
     docs_link = 'http://scicrunch.org/resources'  # TODO update with explication of the tags
     REPLY_TAG = 'RRIDCUR:Released-Parent'
     SUCCESS_TAG = 'RRIDCUR:Released'
-    skip_tags = 'Duplicate', 'Unrecognized'
-    skip_anno_tags = 'InsufficientMetadata',  # tags indicating that we should not release to public
-    alert_tags = 'Incorrect',  # tags indicating that the RRID may be wrong...
+    skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized'
+    skip_anno_tags = 'RRIDCUR:InsufficientMetadata',  # tags indicating that we should not release to public
+    alert_tags = 'RRIDCUR:Incorrect',  # tags indicating that the RRID may be wrong...
+    alert_text = 'No record of the resource this RRID claims to point to could be found.'  # TODO wording
     # if there is not a replacement RRID listed along with this tag then alert that we could find no RRID at all for this
     h_private = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
     h_public = HypothesisUtils(username=username, token=api_token, group=group_public, max_results=100000)
@@ -283,24 +284,29 @@ class RRIDCuration(HypothesisHelper):
         else:
             add_tags = []
             for reply in self.replies:
-                add_tags += reply._tags
+                for tag in reply._tags:
+                    if tag not in self.skip_tags:
+                        add_tags.append(tag)
             return self._tags + add_tags
 
     @property
     def public_text(self):
         if self.isAstNode:
             curator_text = f'<p>Curator: {self._anno.user}</p>\n' if self._anno.user != self.h_private.username else ''
+            curator_note_text = f'<p>Curator note: {self._text}</p>\n' if self._anno.user != self.h_private.username and self._text else ''
             resolver_link = f'{self.resolver}{self.rrid}'
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             nt2_link = f'http://nt2.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
+            links = (f'<p>{self.proper_citation}</p>\n'
+                     f'<p><a href={resolver_link}>{self.rrid}</a><p>\n'
+                     f'<p><a href={resolver_xml_link}>SciCrunch xml</a><p>\n'
+                     f'<p><a href={nt2_link}>N2T resolver</a><p>\n'
+                     f'<p><a href={idents_link}>identifiers.org resolver</a><p>')
             return (f'Resource used\n'
                     f'{curator_text}'
-                    f'<p>{self.proper_citation}</p>\n'
-                    f'<p><a href={resolver_link}>{self.rrid}</a><p>\n'
-                    f'<p><a href={resolver_xml_link}>SciCrunch xml</a><p>\n'
-                    f'<p><a href={nt2_link}>N2T resolver</a><p>\n'
-                    f'<p><a href={idents_link}>identifiers.org resolver</a><p>'
+                    f'{curator_note_text}'
+                    f'{self.alert_text}' if anyMembers(self.alert_tags, *self._tags) else f'{links}'
                     f'<p><a href={self.docs_link}>What is this?</a></p>')
 
     @property
@@ -413,8 +419,15 @@ class RRIDCuration(HypothesisHelper):
 
 def public_dump():
     from IPython import embed
+    from desc.prof import profile_me
     annos = get_annos()
-    rc = [RRIDCuration(a, annos) for a in annos[:100]]
+    @profile_me
+    def load():
+        for a in annos:
+            RRIDCuration(a, annos)
+    load()
+    rc = list(RRIDCuration.objects.values())
+    rp = [r for r in rc if r.replies]
     embed()
 
 def oldmain():
