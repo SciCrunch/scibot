@@ -1,9 +1,21 @@
+#!/usr/bin/env python3.6
 
+import requests
 from pyontutils.utils import noneMembers, anyMembers
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer
 from export import api_token, username, group, group_public, bad_tags
 
-get_annos = Memoizer(api_token, username, group, memoization_file='/tmp/real-scibot-annotations.pickle')
+if group_public == '__world__':
+    raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
+
+if group.startswith('5'):
+    print('Real annos')
+    memfile = '/tmp/real-scibot-annotations.pickle'
+elif group.startswith('4'):
+    print('Test annos')
+    memfile = '/tmp/test-scibot-annotations.pickle'
+
+get_annos = Memoizer(api_token, username, group, memoization_file=memfile)
 
 class mproperty:
     def __init__(self, fget=None, fset=None, fdel=None, doc=None):
@@ -64,22 +76,31 @@ class RRIDCuration(HypothesisHelper):
     private_replies = {}  # in cases where a curator made the annotation
     objects = {}
     identifiers = {}  # paper id: {uri:, doi:, pmid:}
-    known_bad = ['M6oR1Lj5EeeP65teqMF8RA',
-                 'nYbrLLW7EeeQ4wPyyu7iqw',
-                 'UPhsBq-DEeegjsdK6CuueQ',
-                 'UI4WWK95Eeea6a_iF0jHWg',
-                 'HdNDhK93Eeem7sciBew4cw',
-                 'TwobZK91Eee7P1c_azGIHA',
-                 'ZdtjrK91EeeaLwfGBVmqcQ',
-                 'KU1eDKh-EeeX9HMjEOC6rA',
-                 'uvwscqheEeef8nsbQydcag',
-                 '09rXMqVKEeeAuCfc1MOdeA',
-                 'nBsIdqSHEee2Zr-s9njlHA',
+    _xmllib = {}
+    known_bad = [
+        'UPhsBq-DEeegjsdK6CuueQ',
+        'UI4WWK95Eeea6a_iF0jHWg',
+        'HdNDhK93Eeem7sciBew4cw',
+        'TwobZK91Eee7P1c_azGIHA',
+        'ZdtjrK91EeeaLwfGBVmqcQ',
+        'KU1eDKh-EeeX9HMjEOC6rA',
+        'uvwscqheEeef8nsbQydcag',
+        '09rXMqVKEeeAuCfc1MOdeA',
+        'nBsIdqSHEee2Zr-s9njlHA',
                 ]
 
-    def _fetch_xml(self):
-        resp = requests.get(self.resolver + self.rrid + '.xml')
-        self._xml = resp.content  # TODO 404 check
+    @classmethod
+    def _fetch_xmls(cls):
+        if cls._done_loading:
+            rrids = set(r.rrid for r in cls.objects.values() if r.rrid is not None)
+            for rrid in rrids:
+                resp = requests.get(cls.resolver + rrid + '.xml')
+                cls._xmllib[rrid] = resp.content
+
+    @property
+    def _xml(self):
+        if self._xmllib and self.rrid is not None:
+            return self._xmllib[self.rrid]
 
     @property
     def uri(self): return self._anno.uri
@@ -142,9 +163,8 @@ class RRIDCuration(HypothesisHelper):
     @property
     def proper_citation(self):
         if self.isAstNode:
-            if not hasattr(self, '_xml'):
+            if self._xml is None:
                 return 'XML was not fetched no citation included.'
-                self._fetch_xml()
             pc = get_proper_citation(self._xml)
             if not pc.startswith('('):
                 pc = f'({pc})'

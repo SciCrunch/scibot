@@ -7,7 +7,6 @@ from os import environ
 from datetime import date
 from collections import defaultdict
 from collections import namedtuple, defaultdict
-import requests
 from lxml import etree
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation
 
