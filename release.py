@@ -160,8 +160,8 @@ class RRIDCuration(HypothesisHelper):
                     if papers[o.uri]['PMID'] is None and o.rrid is None:
                         pmid = getPMID(o._fixed_tags)
                         papers[o.uri]['PMID'] = pmid
-                        if pmid is None:
-                            print(o)
+                        #if pmid is None:
+                            #print(o)
                     else:
                         papers[o.uri]['nodes'][i] = o
 
@@ -176,8 +176,13 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def isReleaseNode(self):
-        return (bool(self.isAstNode and not getPMID(self._fixed_tags)) or
-                bool(self._type == 'pagenote' and getDOI(self._fixed_tags)))
+        if (self.rrid is None and
+            'RRIDCUR:Missing' in self._fixed_tags and
+            'RRID:' not in self._text):
+            return False
+        elif (self.isAstNode and not getPMID(self._fixed_tags) or
+            self._type == 'pagenote' and getDOI(self._fixed_tags)):
+            return True
 
     @property
     def _xml(self):
@@ -197,9 +202,11 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def alert(self):
-        if self.INCOR_TAG in self.tags:
+        if not self.public_tags:
+            return None
+        elif self.INCOR_TAG in self.public_tags:
             return 'No record found.'  # if there is not a replacement RRID listed along with this tag then alert that we could find no RRID at all for this
-        elif self.CORR_TAG in self.tags:
+        elif self.CORR_TAG in self.public_tags:
             return 'Identifier corrected.'
         else:
             return None
@@ -220,9 +227,23 @@ class RRIDCuration(HypothesisHelper):
             if len(maybe) > 1:
                 if self.id not in self.known_bad:
                     raise ValueError(f'More than one rrid in {maybe} \'{self.id}\' {self.shareLink}')
-            rrid = maybe[0]
+            if anyMembers(self._fixed_tags, *self.skip_anno_tags):
+                # RRIDCUR:InsufficientMetadata RRIDs have different semantics...
+                rrid = None
+            else:
+                rrid = maybe[0]
         elif 'RRIDCUR:Unresolved' in self._tags:  # scibot is a good tagger, ok to use _tags ^_^
             rrid = 'RRID:' + self.exact
+        elif (anyMembers(self._fixed_tags, 'RRIDCUR:Unrecognized', self.VAL_TAG) and
+              'RRID:' not in self._text and self.exact):
+            if 'RRID:' in self.exact:
+                front, rest = self.exact.split('RRID:')
+                rest = rest.replace(' ', '')
+                rrid = 'RRID:' + rest  # yay for SCRRID:SCR_AAAAAAAHHHHH
+            elif self.exact.startswith('AB_') or self.exact.startswith('IMSR_JAX'):
+                rrid = 'RRID:' + self.exact.strip()
+            else:
+                rrid = None
         elif self._anno.user != self.h_private.username and 'RRID:' in self._text:
             # special case for the old practice of putting the correct rrid in the text instead of the tags
             try:
@@ -263,7 +284,7 @@ class RRIDCuration(HypothesisHelper):
         if self.rrid:
             return self.resolver + self.rrid
 
-    @property
+    @mproperty
     def proper_citation(self):
         if self.isAstNode and self.rrid:
             if self._xml is None:
@@ -297,16 +318,18 @@ class RRIDCuration(HypothesisHelper):
         reference = f'<p>Public Version: <a href=https://hyp.is/{self.public_id}>{self.public_id}</a></p>'
         if self._anno.user != self.h_private.username:
             return reference
-        else:
+        elif self.isAstNode:
             return reference + self._text
+        else:
+            return self._text 
 
     @property
     def public_text(self):
         if self.isAstNode:
 
-            ALERT = '<p>{self.alert}</p>\n<hr>' if self.alert else ''
-            curator_text = f'<p>Curator: {self._anno.user}</p>\n' if self._anno.user != self.h_private.username else ''
-            curator_note_text = f'<p>Curator note: {self._text}</p>\n' if self._anno.user != self.h_private.username and self._text else ''
+            ALERT = f'<p>{self.alert}</p>\n<hr>\n' if self.alert else ''
+            curator_note_text = f'<p>Curator note: {self._text}</p>\n' if self._anno.user != self.h_private.username and self._text else ''  # TODO include text from replies
+            curator_text = f'<p>Curator: {self._anno.user}</p>\n' if self._anno.user != self.h_private.username else ''  # TODO need to get the curator from replies if there are multiple notes
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             nt2_link = f'http://nt2.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
@@ -315,16 +338,15 @@ class RRIDCuration(HypothesisHelper):
                      '<p>Alternate resolvers:<br>\n'
                      f'<a href={resolver_xml_link}>SciCrunch xml</a>\n'
                      f'<a href={nt2_link}>N2T</a>\n'
-                     f'<a href={idents_link}>identifiers.org</a>'
+                     f'<a href={idents_link}>identifiers.org</a>\n'
                      '</p>') if self.rrid else ''
 
             return (f'{ALERT}'
-                    f'Resource used\n'
                     f'{curator_text}'
                     f'{curator_note_text}'
                     f'{links}'
-                    '<hr>'
-                    f'<p><a href={self.docs_link}>What is this?</a></p>')
+                    '<hr>\n'
+                    f'<p>\n<a href={self.docs_link}>What is this?</a>\n</p>')
 
     @property
     def _fixed_tags(self):
@@ -337,10 +359,13 @@ class RRIDCuration(HypothesisHelper):
         else:
             tags = self._tags
 
+        fixes = {'RRIDCUR:InsufficientMetaData':'RRIDCUR:InsufficientMetadata'}
         out_tags = []
         for tag in tags:
             if tag in bad_tags:
                 tag = tag.replace('RRID:', 'RRIDCUR:')
+            if tag in fixes:
+                tag = fixes[tag]
             out_tags.append(tag)
         return out_tags
 
@@ -391,7 +416,7 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def public_payload(self):
-        if self.isAstNode:
+        if self.isReleaseNode:
             return {
                 'uri':self.uri,
                 'target':self.target,
@@ -444,7 +469,7 @@ class RRIDCuration(HypothesisHelper):
         uri_text =   f'\n{t}uri:          {self.uri}' if self.uri else ''
         doi_text =   f'\n{t}doi:          {self.doi}' if self.doi else ''
         pmid_text =  f'\n{t}pmid:         {self.pmid}' if self.pmid else ''
-        rrid_text =  f'\n{t}rrid:         {self.rrid}' if self.rrid else ''
+        rrid_text =  f'\n{t}rrid:         {self.rrid} {self.rridLink}' if self.rrid else ''
         exact_text = f'\n{t}exact:        {self.exact}' if self.exact else ''
 
         lp = f'\n{t}'
@@ -475,6 +500,7 @@ class RRIDCuration(HypothesisHelper):
                 f"\n{t}{self.__class__.__name__ + ':':<14}{self.shareLink} {self.__class__.__name__}.byId('{self.id}')"
                 f'\n{t}user:         {self._anno.user}'
                 f'\n{t}isAstNode:    {self.isAstNode}'
+                f'\n{t}isRelNode:    {self.isReleaseNode}'
                 f'{parent_id}'
                 f'{uri_text}'
                 f'{doi_text}'
@@ -503,6 +529,7 @@ def main():
     rc = [r(a, annos) for a in annos]
     rp = [r for r in rc if r.replies]
     rpt = [r for r in rp if any(re for re in r.replies if re._text)]
+    rr = [r for r in rc if r.isReleaseNode]
     ns = [r for r in rc if r._anno.user != 'scibot']
     _ = [repr(r) for r in rc]  # exorcise the spirits
     embed()
