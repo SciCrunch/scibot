@@ -6,6 +6,7 @@ import requests
 from pyontutils.utils import noneMembers, anyMembers
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer
 from export import api_token, username, group, group_public, bad_tags, get_proper_citation
+from IPython import embed
 
 if group_public == '__world__':
     raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
@@ -97,7 +98,7 @@ class RRIDCuration(HypothesisHelper):
     INCOR_TAG = 'RRIDCUR:Incorrect' 
     CORR_TAG = 'RRIDCUR:Corrected'
     VAL_TAG = 'RRIDCUR:Validated'
-    skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
+    skip_tags = 'RRIDCUR:Unrecognized', *bad_tags
     skip_anno_tags = 'RRIDCUR:InsufficientMetadata',  # tags indicating that we should not release to public
     h_private = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
     h_public = HypothesisUtils(username=username, token=api_token, group=group_public, max_results=100000)
@@ -107,6 +108,7 @@ class RRIDCuration(HypothesisHelper):
     identifiers = {}  # paper id: {uri:, doi:, pmid:}
     _papers = {}
     _xmllib = {}
+    _done_all = False
     known_bad = [
         'UPhsBq-DEeegjsdK6CuueQ',
         'UI4WWK95Eeea6a_iF0jHWg',
@@ -126,8 +128,14 @@ class RRIDCuration(HypothesisHelper):
     def __init__(self, anno, annos):
         super().__init__(anno, annos)
         if self._done_loading:
+            if self._done_all:
+                print('WARNING you probably have a duplicate annotation that is triggering another run.')
+                #print(HypothesisHelper(anno, annos))
+                #embed()
+                #raise BaseException('WHY ARE YOU GETTING CALLED 3 TIMES?')
             self._fetch_xmls(os.path.expanduser('~/ni/scibot_rrid_xml.pickle'))
             self._do_papers()
+            self.__class__._done_all = True
 
     @classmethod
     def _fetch_xmls(cls, file=None):
@@ -168,21 +176,26 @@ class RRIDCuration(HypothesisHelper):
     @property
     def isAstNode(self):
         if (self._type == 'annotation' and
-            self._fixed_tags and
-            noneMembers(self._fixed_tags, *self.skip_anno_tags)):
+            self._fixed_tags):
             return True
         else:
             return False
 
     @property
     def isReleaseNode(self):
-        if (self.rrid is None and
+        if anyMembers(self._fixed_tags, *self.skip_anno_tags):
+            return False
+        if 'RRIDCUR:Duplicate' in self._fixed_tags and not self.proper_citation:
+            return False
+        elif (self.rrid is None and
             'RRIDCUR:Missing' in self._fixed_tags and
             'RRID:' not in self._text):
             return False
         elif (self.isAstNode and not getPMID(self._fixed_tags) or
             self._type == 'pagenote' and getDOI(self._fixed_tags)):
             return True
+        else:
+            return False
 
     @property
     def _xml(self):
@@ -191,7 +204,7 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def paper(self):
-        if cls._done_loading:
+        if self._done_loading:
             return self._papers[self.uri]
 
     @property
@@ -212,7 +225,7 @@ class RRIDCuration(HypothesisHelper):
             return None
 
     @property
-    def rrid(self):  # FIXME
+    def _original_rrid(self):
         # cannot call self.tags from here
         # example of case where I need to check for RRIDCUR:Incorrect to make the right determination
         "-3zMMjc7EeeTBfeviH2gHg"
@@ -233,7 +246,10 @@ class RRIDCuration(HypothesisHelper):
             else:
                 rrid = maybe[0]
         elif 'RRIDCUR:Unresolved' in self._tags:  # scibot is a good tagger, ok to use _tags ^_^
-            rrid = 'RRID:' + self.exact
+            if not self.exact.startswith('RRID:'):
+                rrid = 'RRID:' + self.exact
+            else:
+                rrid = self.exact
         elif (anyMembers(self._fixed_tags, 'RRIDCUR:Unrecognized', self.VAL_TAG) and
               'RRID:' not in self._text and self.exact):
             if 'RRID:' in self.exact:
@@ -259,6 +275,19 @@ class RRIDCuration(HypothesisHelper):
         else:
             rrid = None
 
+        return rrid
+            
+    @property
+    def rrid(self):
+        rrid = self._original_rrid
+
+        # fix malformed RRIDs
+        if rrid is not None:
+            srrid = rrid.split('RRID:')
+            if len(srrid) > 2:
+                rrid = 'RRID:' + srrid[-1]
+
+        # output logic
         if self._type == 'reply':
             return rrid
         elif self._type == 'annotation':
@@ -277,6 +306,10 @@ class RRIDCuration(HypothesisHelper):
                     return rep.rrid
                 elif self.INCOR_TAG in rep.tags:
                     return None
+                elif (rrid is not None and
+                      rep.rrid is not None and
+                      rrid != rep.rrid):
+                    return rep.rrid
             return rrid
 
     @property
@@ -284,13 +317,18 @@ class RRIDCuration(HypothesisHelper):
         if self.rrid:
             return self.resolver + self.rrid
 
+    @property
+    def corrected(self):
+        if self._done_loading and self._original_rrid:
+            return self._original_rrid != self.rrid
+
     @mproperty
     def proper_citation(self):
         if self.isAstNode and self.rrid:
             if self._xml is None:
                 return 'XML was not fetched no citation included.'
             pc = get_proper_citation(self._xml)
-            if not pc.startswith('('):
+            if not pc.startswith('(') and ' ' in pc:
                 pc = f'({pc})'
             return pc
 
@@ -380,39 +418,44 @@ class RRIDCuration(HypothesisHelper):
                     return []
             else:
                 return sorted(tags + [self.SUCCESS_TAG])
-        elif self._type == 'reply':
+        elif self._type == 'reply':  # NOTE replies don't ever get put in public directly
             out_tags = []
             for tag in tags:
                 if tag.startswith('RRID:'):
-                    continue  # we deal with the RRID itself in def rrid(self)  # NOTE replies don't ever get put in public directly...
+                    continue  # we deal with the RRID itself in def rrid(self)
                 elif tag == self.INCOR_TAG and self.rrid:
-                    out_tags.append(self.CORR_TAG)
+                    continue
                 else:
                     out_tags.append(tag)
+            if self.corrected:
+                out_tags.append(self.CORR_TAG)
             return sorted(out_tags)
 
 
     @property
     def public_tags(self):
-        if self._anno.user != self.h_private.username:
-            if self.rrid:
-                return [self.rrid, self.VAL_TAG]  # FIXME this isn't right
-        else:
-            tags = []
-            for reply in self.replies:
-                for tag in reply.tags:
-                    if tag not in self.skip_tags:
-                        tags.append(tag)
-                for tag in self._fixed_tags:
-                    if not tag.startswith('RRID:'):
-                        tags.append(tag)
-                    if self.CORR_TAG in tags and tag == self.INCOR_TAG:
-                        continue
-                    #if anyMember(tags, self.CORR_TAG, self.INCOR_TAG) and tag.startswith('RRID:'):
-                        #continue  # if we corrected the RRID or it was wrong do not include it as a tag
-                if self.rrid:
-                    tags.append(self.rrid)
-            return sorted(tags)
+        #if self._anno.user != self.h_private.username:
+            #if self.isAstNode and self.rrid:
+                #return [*self._fixed_tags, self.rrid, self.VAL_TAG]  # FIXME this isn't right
+        #else:
+
+        tags = []
+        for reply in self.replies:
+            for tag in reply.tags:
+                if tag not in self.skip_tags:
+                    tags.append(tag)
+            for tag in self._fixed_tags:
+                if self.corrected and tag == self.INCOR_TAG:
+                    continue
+                if not tag.startswith('RRID:'):
+                    tags.append(tag)
+        if self.corrected:
+            tags.append(self.CORR_TAG)
+        if self.rrid:
+            tags.append(self.rrid)
+            if self._anno.user != self.h_private.username and self.VAL_TAG not in tags:
+                tags.append(self.VAL_TAG)
+        return sorted(tags)
 
     @property
     def public_payload(self):
@@ -516,23 +559,130 @@ class RRIDCuration(HypothesisHelper):
                 f'{replies_text}'
                 f'\n{t}____________________')
 
-def main():
-    from IPython import embed
-    from desc.prof import profile_me
-    annos = get_annos()
-    #@profile_me
-    #def load():
-        #for a in annos:
-            #RRIDCuration(a, annos)
-    #load()
-    r = RRIDCuration
-    rc = [r(a, annos) for a in annos]
+# repl convenience
+rrcu = RRIDCuration
+
+def sanity_and_stats(rc):
+    print('groups')
     rp = [r for r in rc if r.replies]
     rpt = [r for r in rp if any(re for re in r.replies if re._text)]
     rr = [r for r in rc if r.isReleaseNode]
     ns = [r for r in rc if r._anno.user != 'scibot']
-    _ = [repr(r) for r in rc]  # exorcise the spirits
+
+    # sanity 
+    unresolved = [r for r in rr if r.rrid and not r.proper_citation]
+    dupes = [r for r in rc if 'RRIDCUR:Duplicate' in r._fixed_tags]
+
+    dupes_that_arent = [r for r in dupes if r.rrid not in [r2.rrid for idr2, r2 in r.paper['nodes'].items() if idr2 is not r.id]]
+
+    papers = rrcu._papers.values()
+    paper_sanity = [paper for paper in papers
+                    if not (len(set(r.rrid for r in paper['nodes'].values() if r.isReleaseNode)) ==
+                            len([r.rrid for r in paper['nodes'].values() if r.isReleaseNode]))]
+
+    report = report_gen(papers, unresolved)
+    to_review_txt, to_review_html = to_review(unresolved)
     embed()
+
+def report_gen(papers, unresolved):
+    # reporting
+    doi_papers = 0
+    pmid_papers = 0
+    both_papers = 0
+    neither_papers = 0
+    doio_papers = 0
+    pmido_papers = 0
+    for p in papers:
+        if not (p['DOI'] or p['PMID']):
+            neither_papers += 1
+        else:
+            if p['DOI']:
+                doi_papers += 1
+                if not p['PMID']:
+                    doio_papers += 1
+            if p['PMID']:
+                pmid_papers += 1
+                if not p['DOI']:
+                    pmido_papers += 1
+            if p['DOI'] and p['PMID']:
+                both_papers += 1
+
+    report = (
+        'Paper id stats:\n'
+        f'DOI:        {doi_papers}\n'
+        f'PMID:       {pmid_papers}\n'
+        f'Both:       {both_papers}\n'
+        f'Neither:    {neither_papers}\n'
+        f'DOI only:   {doio_papers}\n'
+        f'PMID only:  {pmido_papers}\n'
+        f'Total:      {len(papers)}\n'
+        '\n'
+        'Unresolved stats:\n'
+        f'Total:         {len(unresolved)}\n'
+        f'Unique RRIDs:  {len(set(r.rrid for r in unresolved))}\n'
+    )
+
+    with open('rridcur-report.txt', 'wt') as f:
+        f.write(report)
+
+    return report
+
+def to_review(unresolved):
+    to_review_txt = [f'{r.shareLink}    resolver:    {r.rridLink}\n' for r in unresolved]
+    with open('unresolved-and-uncurated.txt', 'wt') as f:
+        f.writelines(to_review_txt)
+
+    to_review_html = (
+        ['<style>table { font-family: Dejavu Sans Mono; font-size: 75%; }</style>\n'
+         f'<p>Unresolved and uncurated {len(unresolved)}</p>\n'
+         '<table>\n'] + 
+        [(f'<tr><td><a href={r.shareLink}>{r.shareLink}</a></td>'
+          '<td>resolver:</td>'
+          f'<td><a href={r.rridLink}>{r.rridLink}</a></td><tr>\n')
+         for r in sorted(unresolved, key=lambda u: (u.rrid, len(u.shareLink)))] +
+        ['</table>']
+    )
+    with open('unresolved-and-uncurated.html', 'wt') as f:
+        f.writelines(to_review_html)
+
+    return to_review_txt, to_review_html
+
+def clean_dupes(get_annos):
+    annos = get_annos()
+    seen = set()
+    dupes = [a.id for a in annos if a.id in seen or seen.add(a.id)]
+    preunduped = [a for a in annos if a.id in dupes]
+    for id_ in dupes:
+        print('=====================')
+        anns = sorted((a for a in annos if a.id == id_), key=lambda a: a.updated)
+        [print(a.updated, HypothesisHelper(a, annos)) for a in anns]
+        for a in anns[:-1]:  # all but latest
+            annos.remove(a)
+    unduped = [a for a in annos if a.id in dupes]
+    # get_annos.memoize_annos(annos)
+    embed()
+
+def main():
+    from desc.prof import profile_me
+
+    # clean updated annos
+    #clean_dupes(get_annos)
+    #return
+
+    # loading
+    annos = get_annos()
+    #@profile_me
+    #def load():
+        #for a in annos:
+            #rrcu(a, annos)
+    #load()
+    #rc = list(rrcu.objects.values())
+    rc = [rrcu(a, annos) for a in annos]
+
+    # sanity checks
+    #print('repr everything')
+    #_ = [repr(r) for r in rc]  # exorcise the spirits  (this is the slow bit, joblib breaks...)
+    stats = sanity_and_stats(rc)
 
 if __name__ == '__main__':
     main()
