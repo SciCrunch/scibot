@@ -93,12 +93,13 @@ def mproperty_set(inst, func_name, value):
 class RRIDCuration(HypothesisHelper):
     resolver = 'http://scicrunch.org/resolver/'
     docs_link = 'http://scicrunch.org/resources'  # TODO update with explication of the tags
-    REPLY_TAG = 'RRIDCUR:Released-Parent'
+    REPLY_TAG = 'RRIDCUR:Released'
+    #SKIP_DUPE_TAG = 'RRIDCUR:Duplicate-Released'  # sigh...
     SUCCESS_TAG = 'RRIDCUR:Released'
     INCOR_TAG = 'RRIDCUR:Incorrect' 
     CORR_TAG = 'RRIDCUR:Corrected'
     VAL_TAG = 'RRIDCUR:Validated'
-    skip_tags = 'RRIDCUR:Unrecognized', *bad_tags
+    skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
     skip_anno_tags = 'RRIDCUR:InsufficientMetadata',  # tags indicating that we should not release to public
     h_private = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
     h_public = HypothesisUtils(username=username, token=api_token, group=group_public, max_results=100000)
@@ -160,7 +161,8 @@ class RRIDCuration(HypothesisHelper):
                 if o.uri not in papers:
                     papers[o.uri] = {'DOI':None,
                                      'PMID':None,
-                                     'nodes':{}}
+                                     'nodes':{},
+                                     'rrids':{}}
                 if o._type == 'pagenote':
                     papers[o.uri]['DOI'], papers[o.uri]['PMID'] = getIDS(o._fixed_tags)
                         
@@ -172,6 +174,62 @@ class RRIDCuration(HypothesisHelper):
                             #print(o)
                     else:
                         papers[o.uri]['nodes'][i] = o
+                        if o.rrid not in papers[o.uri]['rrids']:
+                            papers[o.uri]['rrids'][o.rrid] = {
+                                'public_id':None,
+                                'objects':set(),
+                                'record':None,  # merged if there are duplicates
+                            }
+                        papers[o.uri]['rrids'][o.rrid]['objects'].add(o)
+
+    @classmethod
+    def _duplicates(cls):
+        return [(p, r, rus)
+                for p, v in cls._papers.items()
+                for r, rus in v['rrids'].items()
+                if len(rus['objects']) > 1]
+
+    @classmethod
+    def _adjudicate_duplicates(cls):
+        objects = cls.objects
+        papers = cls._papers
+        rc = list(objects.values())
+        asserted_dupes = [r for r in rc if 'RRIDCUR:Duplicate' in r._fixed_tags]
+        adupes_that_arent = [r for r in asserted_dupes
+                             if r.rrid not in [r2.rrid
+                                               for idr2, r2 in r.paper['nodes'].items()
+                                               if idr2 is not r.id]]
+        not_dupes = [r for r in rc
+                     if (r.isAstNode and
+                         r.rrid is not None and
+                         r.rrid not in [r2.rrid
+                                        for idr2, r2 in r.paper['nodes'].items()
+                                        if idr2 is not r.id])]
+
+        dupes = [r for r in rc
+                 if (r.isAstNode and
+                     r.rrid is not None and
+                     r.rrid in [r2.rrid
+                                for idr2, r2 in r.paper['nodes'].items()
+                                if idr2 is not r.id])]
+        sets = {}
+        for du in dupes:
+            if du.uri not in sets:
+                sets[du.uri] = {}
+            di = sets[du.uri]
+            if du.rrid not in di:
+                di[du.rrid] = set()
+            rdi = di[du.rrid]
+            rdi.add(du)
+
+        sd = sorted(dupes, key=lambda r:(r.uri, r._anno.updated))
+
+        # in theory could update the mapping in objects...
+        # probably better to create another class that functions on papers and RRIDs
+        # instead of on annotations...
+
+        #cls._duplicates_not_to_release = set()
+        embed()
 
     @property
     def isAstNode(self):
@@ -182,10 +240,16 @@ class RRIDCuration(HypothesisHelper):
             return False
 
     @property
+    def already_released_or_skipped(self):
+        return any(anyMembers(r.tags, self.REPLY_TAG) for r in self.replies)
+
+    @property
     def isReleaseNode(self):
         if anyMembers(self._fixed_tags, *self.skip_anno_tags):
             return False
-        if 'RRIDCUR:Duplicate' in self._fixed_tags and not self.proper_citation:
+        #elif self in self._duplicates_not_to_release:  # TODO post private reply to mark these
+            #return False
+        elif 'RRIDCUR:Duplicate' in self._fixed_tags and not self.proper_citation:  # TODO remove?
             return False
         elif (self.rrid is None and
             'RRIDCUR:Missing' in self._fixed_tags and
@@ -353,6 +417,7 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def text(self):
+        return self._text  # XXX short circuit
         reference = f'<p>Public Version: <a href=https://hyp.is/{self.public_id}>{self.public_id}</a></p>'
         if self._anno.user != self.h_private.username:
             return reference
@@ -362,12 +427,17 @@ class RRIDCuration(HypothesisHelper):
             return self._text 
 
     @property
+    def private_text(self):
+        if self.isReleaseNode and self.public_id:
+            return shareLinkFromId(self.public_id)
+
+    @property
     def public_text(self):
         if self.isAstNode:
 
             ALERT = f'<p>{self.alert}</p>\n<hr>\n' if self.alert else ''
             curator_note_text = f'<p>Curator note: {self._text}</p>\n' if self._anno.user != self.h_private.username and self._text else ''  # TODO include text from replies
-            curator_text = f'<p>Curator: {self._anno.user}</p>\n' if self._anno.user != self.h_private.username else ''  # TODO need to get the curator from replies if there are multiple notes
+            curator_text = f'<p>Curator: @{self._anno.user}</p>\n' if self._anno.user != self.h_private.username else ''  # TODO need to get the curator from replies if there are multiple notes
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             nt2_link = f'http://nt2.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
@@ -411,6 +481,7 @@ class RRIDCuration(HypothesisHelper):
     def tags(self):
         tags = self._fixed_tags
         if self.isAstNode:
+            return self._tags  # XXX short circuit
             if self._anno.user != self.h_private.username:
                 if self.rrid:
                     return [self.REPLY_TAG]
@@ -431,14 +502,13 @@ class RRIDCuration(HypothesisHelper):
                 out_tags.append(self.CORR_TAG)
             return sorted(out_tags)
 
+    @property
+    def private_tags(self):
+        if self.isReleaseNode:
+            return [self.REPLY_TAG]
 
     @property
     def public_tags(self):
-        #if self._anno.user != self.h_private.username:
-            #if self.isAstNode and self.rrid:
-                #return [*self._fixed_tags, self.rrid, self.VAL_TAG]  # FIXME this isn't right
-        #else:
-
         tags = []
         for reply in self.replies:
             for tag in reply.tags:
@@ -446,6 +516,8 @@ class RRIDCuration(HypothesisHelper):
                     tags.append(tag)
             for tag in self._fixed_tags:
                 if self.corrected and tag == self.INCOR_TAG:
+                    continue
+                if tag in self.skip_tags:
                     continue
                 if not tag.startswith('RRID:'):
                     tags.append(tag)
@@ -472,21 +544,21 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def private_payload(self):
-        if self._anno.user != self.h_private.username:
-            payload = {
-                'group':self.h_private.group,
-                'permissions':self.h_private.permissions,
-                'references':[self.id],  # this matches what the client does
-                'target':[{'source':self.uri}],
-                'tags':self.tags,
-                'text':self.text,
-                'uri':self.uri,
-            }
-        else:
-            payload = {
-                'tags':self.tags,
-                'text':self.text,
-            }
+        #if self._anno.user != self.h_private.username:
+        payload = {
+            'group':self.h_private.group,
+            'permissions':self.h_private.permissions,
+            'references':[self.id],  # this matches what the client does
+            'target':[{'source':self.uri}],
+            'tags':self.private_tags,
+            'text':self.private_text,
+            'uri':self.uri,
+        }
+        #else:
+            #payload = {
+                #'tags':self.tags,
+                #'text':self.text,
+            #}
 
     def post_public(self):
         payload = self.public_payload
@@ -496,7 +568,10 @@ class RRIDCuration(HypothesisHelper):
             self._public_anno = HypothesisAnnotation(response.json())
             self.public_annos[self._public_anno.id] = self._public_anno
 
-    def patch_private(self):
+    def reply_private(self):  # let's keep things immutable
+        response = self.h_private.post_annotation(self.private_payload)
+
+    def patch_private(self):  # XXX do not use unless you are really sure
         if self.public_id is not None:
             if self._anno.user != self.h_private.username:
                 response = self.h_private.post_annotation(self.private_payload)
@@ -528,6 +603,9 @@ class RRIDCuration(HypothesisHelper):
         _tag_text =  f'\n{t}_tags:        {self._tags}' if self._tags else ''
         tag_text =   f'\n{t}tags:         {self.tags}' if self.tags else ''
 
+        prte_text =  f'\n{t}prtext:       {self.private_text}' if self.private_text else ''
+        prta_text =  f'\n{t}prtags:       {self.private_tags}' if self.private_tags else ''
+
         ptag_text =  f'\n{t}ptags:        {self.public_tags}' if self.public_tags else ''
 
         ptext_align = 'ptext:        '
@@ -541,6 +619,7 @@ class RRIDCuration(HypothesisHelper):
         replies_text = (f'\n{t}replies:{replies}' if self.reprReplies else rep_ids) if replies else ''
         return (f'\n{t.replace("|","")}*--------------------'
                 f"\n{t}{self.__class__.__name__ + ':':<14}{self.shareLink} {self.__class__.__name__}.byId('{self.id}')"
+                f'\n{t}updated:      {self._anno.updated}'
                 f'\n{t}user:         {self._anno.user}'
                 f'\n{t}isAstNode:    {self.isAstNode}'
                 f'\n{t}isRelNode:    {self.isReleaseNode}'
@@ -550,10 +629,12 @@ class RRIDCuration(HypothesisHelper):
                 f'{pmid_text}'
                 f'{rrid_text}'
                 f'{exact_text}'
-                f'{_text_text}'
-                f'{text_text}'
+                #f'{_text_text}'
+                #f'{text_text}'
                 f'{_tag_text}'
                 f'{tag_text}'
+                f'{prte_text}'
+                f'{prta_text}'
                 f'{ptext}'
                 f'{ptag_text}'
                 f'{replies_text}'
@@ -571,14 +652,24 @@ def sanity_and_stats(rc):
 
     # sanity 
     unresolved = [r for r in rr if r.rrid and not r.proper_citation]
-    dupes = [r for r in rc if 'RRIDCUR:Duplicate' in r._fixed_tags]
 
-    dupes_that_arent = [r for r in dupes if r.rrid not in [r2.rrid for idr2, r2 in r.paper['nodes'].items() if idr2 is not r.id]]
+    #dupes = [r for r in rc if 'RRIDCUR:Duplicate' in r._fixed_tags]
+
+    # these seem to be from a strange use of RRIDCUR:Duplicate where
+    # I would include the tag if there was another instance of the
+    # RRID that was also found on the page????
+    #dupes_that_arent = [r for r in dupes
+                        #if r.rrid not in [r2.rrid
+                                          #for idr2, r2 in r.paper['nodes'].items()
+                                          #if idr2 is not r.id]]
+    #visconf = [(r1.rrid, sorted(r.rrid for r in r1.paper['nodes'].values()))
+               #for r1 in dupes_that_arent]
+    #links = [r.shareLink for r in dupes_that_arent]
 
     papers = rrcu._papers.values()
-    paper_sanity = [paper for paper in papers
-                    if not (len(set(r.rrid for r in paper['nodes'].values() if r.isReleaseNode)) ==
-                            len([r.rrid for r in paper['nodes'].values() if r.isReleaseNode]))]
+    #paper_sanity = [paper for paper in papers
+                    #if not (len(set(r.rrid for r in paper['nodes'].values() if r.isReleaseNode)) ==
+                            #len([r.rrid for r in paper['nodes'].values() if r.isReleaseNode]))]
 
     report = report_gen(papers, unresolved)
     to_review_txt, to_review_html = to_review(unresolved)
