@@ -111,29 +111,30 @@ class RRIDCuration(HypothesisHelper):
     _xmllib = {}
     _done_all = False
     known_bad = [
-        'UPhsBq-DEeegjsdK6CuueQ',
-        'UI4WWK95Eeea6a_iF0jHWg',
-        'HdNDhK93Eeem7sciBew4cw',
-        'TwobZK91Eee7P1c_azGIHA',
-        'ZdtjrK91EeeaLwfGBVmqcQ',
-        'KU1eDKh-EeeX9HMjEOC6rA',
-        'uvwscqheEeef8nsbQydcag',
-        '09rXMqVKEeeAuCfc1MOdeA',
-        'nBsIdqSHEee2Zr-s9njlHA',
+        #'UPhsBq-DEeegjsdK6CuueQ',
+        #'UI4WWK95Eeea6a_iF0jHWg',
+        #'HdNDhK93Eeem7sciBew4cw',
+        #'TwobZK91Eee7P1c_azGIHA',
+        #'ZdtjrK91EeeaLwfGBVmqcQ',
+        #'KU1eDKh-EeeX9HMjEOC6rA',
+        #'uvwscqheEeef8nsbQydcag',
+        #'09rXMqVKEeeAuCfc1MOdeA',
+        #'nBsIdqSHEee2Zr-s9njlHA',
+
         # max wat
-        'AVOVWIoXH9ZO4OKSlUhA',  # copy paste error
-        'nv_XaPiaEeaaYkNwLEhf0g',  # a dupe
-        '8lMPCAUoEeeyPXsJLLYetg',
+        #'AVOVWIoXH9ZO4OKSlUhA',  # copy paste error
+        #'nv_XaPiaEeaaYkNwLEhf0g',  # a dupe
+        #'8lMPCAUoEeeyPXsJLLYetg',
                 ]
 
     def __init__(self, anno, annos):
         super().__init__(anno, annos)
         if self._done_loading:
             if self._done_all:
-                print('WARNING you probably have a duplicate annotation that is triggering another run.')
+                print('WARNING you ether have a duplicate annotation or your annotations are not sorted by updated.')
                 #print(HypothesisHelper(anno, annos))
                 #embed()
-                #raise BaseException('WHY ARE YOU GETTING CALLED 3 TIMES?')
+                #raise BaseException('WHY ARE YOU GETTING CALLED MULTIPLE TIMES?')
             self._fetch_xmls(os.path.expanduser('~/ni/scibot_rrid_xml.pickle'))
             self._do_papers()
             self.__class__._done_all = True
@@ -146,7 +147,7 @@ class RRIDCuration(HypothesisHelper):
                 with open(file, 'rb') as f:
                     cls._xmllib = pickle.load(f)
             to_fetch = [rrid for rrid in rrids if rrid not in cls._xmllib]
-            print(f'missing {len(to_fetch)} ids')
+            print(f'missing {len(to_fetch)} rrids')
             for rrid in to_fetch:
                 url = cls.resolver + rrid + '.xml'
                 print('fetching', url)
@@ -176,14 +177,14 @@ class RRIDCuration(HypothesisHelper):
                         papers[o.uri]['nodes'][i] = o
                         if o.rrid not in papers[o.uri]['rrids']:
                             papers[o.uri]['rrids'][o.rrid] = {
-                                'public_id':None,
+                                'public_anno':None,
                                 'objects':set(),
-                                'record':None,  # merged if there are duplicates
                             }
-                        papers[o.uri]['rrids'][o.rrid]['objects'].add(o)
+                        if o.isReleaseNode:
+                            papers[o.uri]['rrids'][o.rrid]['objects'].add(o)
 
     @classmethod
-    def _duplicates(cls):
+    def _get_duplicates(cls):
         return [(p, r, rus)
                 for p, v in cls._papers.items()
                 for r, rus in v['rrids'].items()
@@ -232,6 +233,13 @@ class RRIDCuration(HypothesisHelper):
         embed()
 
     @property
+    def duplicates(self):
+        if self.isReleaseNode and self.rrid is not None:
+            return tuple(o for o in self.paper['rrids'][self.rrid]['objects'] if o is not self)
+        else:
+            return tuple()
+
+    @property
     def isAstNode(self):
         if (self._type == 'annotation' and
             self._fixed_tags):
@@ -249,11 +257,11 @@ class RRIDCuration(HypothesisHelper):
             return False
         #elif self in self._duplicates_not_to_release:  # TODO post private reply to mark these
             #return False
-        elif 'RRIDCUR:Duplicate' in self._fixed_tags and not self.proper_citation:  # TODO remove?
-            return False
+        #elif 'RRIDCUR:Duplicate' in self._fixed_tags and not self.proper_citation:  # TODO remove?
+            #return False
         elif (self.rrid is None and
-            'RRIDCUR:Missing' in self._fixed_tags and
-            'RRID:' not in self._text):
+              self._Missing and
+              'RRID:' not in self._text):
             return False
         elif (self.isAstNode and not getPMID(self._fixed_tags) or
             self._type == 'pagenote' and getDOI(self._fixed_tags)):
@@ -276,6 +284,22 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def target(self): return self._anno.target
+
+    @property
+    def _Incorrect(self):
+        return self.INCOR_TAG in self._fixed_tags
+
+    @property
+    def _Missing(self):
+        return 'RRIDCUR:Missing' in self._fixed_tags
+
+    @property
+    def _Unrecognized(self):
+        return 'RRIDCUR:Unrecognized' in self._fixed_tags
+
+    @property
+    def _Validated(self):
+        return self.VAL_TAG in self._fixed_tags
 
     @property
     def alert(self):
@@ -314,8 +338,9 @@ class RRIDCuration(HypothesisHelper):
                 rrid = 'RRID:' + self.exact
             else:
                 rrid = self.exact
-        elif (anyMembers(self._fixed_tags, 'RRIDCUR:Unrecognized', self.VAL_TAG) and
-              'RRID:' not in self._text and self.exact):
+        elif ((self._Unrecognized or self._Validated) and
+              'RRID:' not in self._text and
+              self.exact):
             if 'RRID:' in self.exact:
                 front, rest = self.exact.split('RRID:')
                 rest = rest.replace(' ', '')
@@ -324,18 +349,23 @@ class RRIDCuration(HypothesisHelper):
                 rrid = 'RRID:' + self.exact.strip()
             else:
                 rrid = None
-        elif self._anno.user != self.h_private.username and 'RRID:' in self._text:
+        elif self._anno.user != self.h_private.username:
             # special case for the old practice of putting the correct rrid in the text instead of the tags
-            try:
-                junk, id_ = self._text.split('RRID:')
-            except ValueError as e:
-                #print('too many RRIDs in text, skipping', self.shareLink, self._text)
-                id_ = 'lol lol'
-            id_ = id_.strip()
-            if ' ' in id_:  # not going to think to hard on this one
-                rrid = None
+            if 'RRID:' in self._text:
+                try:
+                    junk, id_ = self._text.split('RRID:')
+                except ValueError as e:
+                    #print('too many RRIDs in text, skipping', self.shareLink, self._text)
+                    id_ = 'lol lol'
+                id_ = id_.strip()
+                if ' ' in id_:  # not going to think to hard on this one
+                    rrid = None
+                else:
+                    rrid = 'RRID:' + id_
+            elif self.exact and self._Incorrect and self.exact.startswith('AB_'):
+                rrid = 'RRID:' + self.exact
             else:
-                rrid = 'RRID:' + id_
+                rrid = None
         else:
             rrid = None
 
@@ -356,6 +386,7 @@ class RRIDCuration(HypothesisHelper):
             return rrid
         elif self._type == 'annotation':
             reps = [r for r in self.replies if r.rrid]
+            rtags = [t for r in self.replies for t in r.tags]
             if reps:
                 if len(reps) > 1:
                     if len(set(r.rrid for r in reps)) == 1:
@@ -368,12 +399,14 @@ class RRIDCuration(HypothesisHelper):
                     return rep.rrid
                 elif rrid is None:
                     return rep.rrid
-                elif self.INCOR_TAG in rep.tags:
+                elif self.INCOR_TAG in rep._fixed_tags:
                     return None
                 elif (rrid is not None and
                       rep.rrid is not None and
                       rrid != rep.rrid):
                     return rep.rrid
+            elif self.INCOR_TAG in rtags:
+                return None
             return rrid
 
     @property
@@ -383,8 +416,13 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def corrected(self):
-        if self._done_loading and self._original_rrid:
-            return self._original_rrid != self.rrid
+        if self._done_loading and self.rrid is not None:
+            if self._original_rrid == self.rrid:
+                if self.exact and self._original_rrid:
+                    if self._Incorrect:
+                        return self.rrid.strip('RRID:') in self.exact
+            elif self._original_rrid is not None:
+                return True
 
     @mproperty
     def proper_citation(self):
@@ -431,13 +469,48 @@ class RRIDCuration(HypothesisHelper):
         if self.isReleaseNode and self.public_id:
             return shareLinkFromId(self.public_id)
 
+    @mproperty
+    def _curators(self):
+        out = set()
+        if self._anno.user != self.h_private.username:
+            out.add(self._anno.user)
+        if self.replies:
+            for r in self.replies:
+                out.update(r._curators)
+        return out
+
+    @mproperty
+    def curators(self):
+        return sorted(set((*self._curators, *(n
+                                              for d in self.duplicates
+                                              for n in d._curators))))
+
+    @mproperty
+    def _curator_notes(self):
+        out = set()
+        if self._text:
+            if self._anno.user != self.h_private.username:
+                out.add(self._text)
+            if self._type == 'annotation':
+                for r in self.replies:
+                    out.update(r.curator_notes)
+        return out
+
+    @mproperty
+    def curator_notes(self):
+        return sorted(set((*self._curator_notes, *(n
+                                                   for d in self.duplicates
+                                                   for n in d._curator_notes))))
+
     @property
-    def public_text(self):
+    def public_text(self):  # FIXME duplicates
         if self.isAstNode:
 
             ALERT = f'<p>{self.alert}</p>\n<hr>\n' if self.alert else ''
-            curator_note_text = f'<p>Curator note: {self._text}</p>\n' if self._anno.user != self.h_private.username and self._text else ''  # TODO include text from replies
-            curator_text = f'<p>Curator: @{self._anno.user}</p>\n' if self._anno.user != self.h_private.username else ''  # TODO need to get the curator from replies if there are multiple notes
+            curator_notes = ''.join(f'<p>Curator note: {cn}</p>\n' for cn in self.curator_notes)
+            curator_note_text = f'{curator_notes}' if self.curator_notes else ''
+            curators = ' '.join(f'@{c}' for c in self.curators)
+            curator_text = f'<p>Curator: {curators}</p>\n' if self.curators else ''
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             nt2_link = f'http://nt2.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
@@ -449,11 +522,12 @@ class RRIDCuration(HypothesisHelper):
                      f'<a href={idents_link}>identifiers.org</a>\n'
                      '</p>') if self.rrid else ''
 
+            second_hr = '<hr>\n' if ALERT and not (curator_text or curator_note_text or links) else ''
             return (f'{ALERT}'
                     f'{curator_text}'
                     f'{curator_note_text}'
                     f'{links}'
-                    '<hr>\n'
+                    f'{second_hr}'
                     f'<p>\n<a href={self.docs_link}>What is this?</a>\n</p>')
 
     @property
@@ -508,25 +582,32 @@ class RRIDCuration(HypothesisHelper):
             return [self.REPLY_TAG]
 
     @property
-    def public_tags(self):
-        tags = []
+    def public_tags(self):  # FIXME duplicates
+        tags = set()
         for reply in self.replies:
             for tag in reply.tags:
                 if tag not in self.skip_tags:
-                    tags.append(tag)
-            for tag in self._fixed_tags:
-                if self.corrected and tag == self.INCOR_TAG:
-                    continue
-                if tag in self.skip_tags:
-                    continue
-                if not tag.startswith('RRID:'):
-                    tags.append(tag)
+                    if self.corrected and tag == self.INCOR_TAG:
+                        continue
+                    tags.add(tag)
+        for dupe in self.duplicates:
+            for tag in dupe.tags:
+                if tag not in self.skip_tags:
+                    tags.add(tag)
+
+        for tag in self._fixed_tags:
+            if self.corrected and tag == self.INCOR_TAG:
+                continue
+            if tag in self.skip_tags:
+                continue
+            if not tag.startswith('RRID:'):
+                tags.add(tag)
         if self.corrected:
-            tags.append(self.CORR_TAG)
+            tags.add(self.CORR_TAG)
         if self.rrid:
-            tags.append(self.rrid)
+            tags.add(self.rrid)
             if self._anno.user != self.h_private.username and self.VAL_TAG not in tags:
-                tags.append(self.VAL_TAG)
+                tags.add(self.VAL_TAG)
         return sorted(tags)
 
     @property
@@ -560,13 +641,28 @@ class RRIDCuration(HypothesisHelper):
                 #'text':self.text,
             #}
 
+    @property
+    def _public_anno(self):
+        if self.rrid is None:
+            #print('No RRID: will reset _public_anno after posting')
+            return None
+        else:
+            pa = self.paper['rrids'][self.rrid]['public_anno']
+            if pa is not None:
+                return pa
+
     def post_public(self):
-        payload = self.public_payload
-        if payload:
-            response = self.h_public.post_annotation(payload)
-            self._public_response = response
-            self._public_anno = HypothesisAnnotation(response.json())
-            self.public_annos[self._public_anno.id] = self._public_anno
+        if self._public_anno is not None:  # dupes of others may go first
+            payload = self.public_payload  # XXX TODO
+            if payload:
+                response = self.h_public.post_annotation(payload)
+                self._public_response = response
+                anno = HypothesisAnnotation(response.json())
+                if self.rrid is None:
+                    self._public_anno = anno
+                else:
+                    self.paper['rrids'][self.rrid]['public_anno'] = anno
+                self.public_annos[self._public_anno.id] = self._public_anno
 
     def reply_private(self):  # let's keep things immutable
         response = self.h_private.post_annotation(self.private_payload)
@@ -629,7 +725,7 @@ class RRIDCuration(HypothesisHelper):
                 f'{pmid_text}'
                 f'{rrid_text}'
                 f'{exact_text}'
-                #f'{_text_text}'
+                f'{_text_text}'
                 #f'{text_text}'
                 f'{_tag_text}'
                 f'{tag_text}'
@@ -653,6 +749,11 @@ def sanity_and_stats(rc):
     # sanity 
     unresolved = [r for r in rr if r.rrid and not r.proper_citation]
 
+    incorrect_with_rrid = [r
+                           for r in rc
+                           if (r.isReleaseNode and
+                               r.INCOR_TAG in r.public_tags and
+                               r.rrid)]
     #dupes = [r for r in rc if 'RRIDCUR:Duplicate' in r._fixed_tags]
 
     # these seem to be from a strange use of RRIDCUR:Duplicate where
