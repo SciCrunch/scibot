@@ -891,7 +891,11 @@ def idPaper(url):
             pmid = get_pmid(doi)
             print(pmid)
             resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_private, [])
+            print('new doi')
             return resp
+    else:
+        print(doi)
+        print('already found')
 
 def main():
     from desc.prof import profile_me
@@ -912,8 +916,12 @@ def main():
 
     # id all the things
     from joblib import Parallel, delayed
-    id_annos = Parallel(n_jobs=5)(delayed(idPaper)(url)
-                                  for url in sorted(rrcu._papers))
+    id_annos = []
+    for purl in rrcu._papers:
+        resp = idPaper(purl)
+        id_annos.append(resp)
+    #id_annos = Parallel(n_jobs=5)(delayed(idPaper)(url)
+                                  #for url in sorted(rrcu._papers))
     embed()
     return
 
