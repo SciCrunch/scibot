@@ -3,9 +3,11 @@
 import os
 import pickle
 import requests
-from pyontutils.utils import noneMembers, anyMembers
+from bs4 import BeautifulSoup
+from pyontutils.utils import noneMembers, anyMembers, allMembers
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer
 from export import api_token, username, group, group_public, bad_tags, get_proper_citation
+from rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
 
 if group_public == '__world__':
@@ -420,7 +422,7 @@ class RRIDCuration(HypothesisHelper):
             if self._original_rrid == self.rrid:
                 if self.exact and self._original_rrid:
                     if self._Incorrect:
-                        return self.rrid.strip('RRID:') in self.exact
+                        return self.rrid.strip('RRID:') not in self.exact
             elif self._original_rrid is not None:
                 return True
 
@@ -554,16 +556,7 @@ class RRIDCuration(HypothesisHelper):
     @property
     def tags(self):
         tags = self._fixed_tags
-        if self.isAstNode:
-            return self._tags  # XXX short circuit
-            if self._anno.user != self.h_private.username:
-                if self.rrid:
-                    return [self.REPLY_TAG]
-                else:
-                    return []
-            else:
-                return sorted(tags + [self.SUCCESS_TAG])
-        elif self._type == 'reply':  # NOTE replies don't ever get put in public directly
+        if self._type == 'reply':  # NOTE replies don't ever get put in public directly
             out_tags = []
             for tag in tags:
                 if tag.startswith('RRID:'):
@@ -575,6 +568,8 @@ class RRIDCuration(HypothesisHelper):
             if self.corrected:
                 out_tags.append(self.CORR_TAG)
             return sorted(out_tags)
+        else:
+            return [t for t in tags if not t.startswith('RRID:')]  # let self.rrid handle the rrid tags
 
     @property
     def private_tags(self):
@@ -774,6 +769,18 @@ def sanity_and_stats(rc):
 
     report = report_gen(papers, unresolved)
     to_review_txt, to_review_html = to_review(unresolved)
+
+    # specific examples for review
+    trouble_children = [
+        RRIDCuration.byId('89qE6KlKEeeAoyf5DRv2SA'),  # both old and new rrid...
+        RRIDCuration.byId('KwZFvH4VEeeo4ffGDDoVXA'),  # incor val
+    ]
+
+    # extrapolated
+    mto = [r for r in rr if len([t for t in r.public_tags if 'RRID:' in t]) > 1]
+    assert not len(mto), 'There are entries with more than one RRID you should look into that.'
+    iv = [r for r in rr if allMembers(r.public_tags, 'RRIDCUR:Incorrect', 'RRIDCUR:Validated')]
+
     embed()
 
 def report_gen(papers, unresolved):
@@ -839,7 +846,7 @@ def to_review(unresolved):
 
     return to_review_txt, to_review_html
 
-def clean_dupes(get_annos):
+def clean_dupes(get_annos, repr_issues=False):
     annos = get_annos()
     seen = set()
     dupes = [a.id for a in annos if a.id in seen or seen.add(a.id)]
@@ -847,18 +854,40 @@ def clean_dupes(get_annos):
     for id_ in dupes:
         print('=====================')
         anns = sorted((a for a in annos if a.id == id_), key=lambda a: a.updated)
-        [print(a.updated, HypothesisHelper(a, annos)) for a in anns]
+        if not repr_issues:
+            [print(a.updated, HypothesisHelper(a, annos)) for a in anns]
         for a in anns[:-1]:  # all but latest
             annos.remove(a)
-    unduped = [a for a in annos if a.id in dupes]
+    deduped = [a for a in annos if a.id in dupes]
+    assert len(preunduped) // len(dupes) == 2, 'Somehow you have managed to get more than 1 duplicate!'
     # get_annos.memoize_annos(annos)
     embed()
+
+def scrapeIds(url):
+    cmd_line = ['google-chrome-unstable', '--headless', '--dump-dom', url]
+    p = subprocess.Popen(cmd_line, stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         env=env)
+    out, err = p.communicate()
+    both = BeautifulSoup(out, 'lxml')
+    doi = getDoi(both, both)
+    pmid = get_pmid(doi)
+    embed()
+    return doi, pmid
+
+def idPaper(url):
+    paper = rrcu._papers[url]
+    doi = paper['DOI']
+    pmid = paper['PMID']
+    if not (doi or pmid):
+        doi, pmid = scrapeIds(url)
+        annotate_doi_pmid(url, doi, pmid, rrcu.h_private, [])
 
 def main():
     from desc.prof import profile_me
 
     # clean updated annos
-    #clean_dupes(get_annos)
+    #clean_dupes(get_annos, repr_issues=True)
     #return
 
     # loading
