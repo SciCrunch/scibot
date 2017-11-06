@@ -2,6 +2,8 @@
 
 import os
 import pickle
+import subprocess
+from urllib.parse import quote
 import requests
 from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers
@@ -863,25 +865,33 @@ def clean_dupes(get_annos, repr_issues=False):
     # get_annos.memoize_annos(annos)
     embed()
 
-def scrapeIds(url):
+def scrapeDoi(url):
+    env = os.environ.copy()
     cmd_line = ['google-chrome-unstable', '--headless', '--dump-dom', url]
     p = subprocess.Popen(cmd_line, stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          env=env)
     out, err = p.communicate()
+    qurl = quote(url, '')
+    with open(os.path.expanduser(f'~/files/scibot/{qurl}'), 'wb') as f:
+        f.write(out)
     both = BeautifulSoup(out, 'lxml')
     doi = getDoi(both, both)
-    pmid = get_pmid(doi)
-    embed()
-    return doi, pmid
+    return doi
 
 def idPaper(url):
     paper = rrcu._papers[url]
     doi = paper['DOI']
     pmid = paper['PMID']
-    if not (doi or pmid):
-        doi, pmid = scrapeIds(url)
-        annotate_doi_pmid(url, doi, pmid, rrcu.h_private, [])
+    print(url)
+    if not doi and url.startswith('http'):  # we've go some weird ones in there...
+        doi = scrapeDoi(url)
+        if doi is not None:
+            print(doi)
+            pmid = get_pmid(doi)
+            print(pmid)
+            resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_private, [])
+            return resp
 
 def main():
     from desc.prof import profile_me
@@ -899,6 +909,13 @@ def main():
     #load()
     #rc = list(rrcu.objects.values())
     rc = [rrcu(a, annos) for a in annos]
+
+    # id all the things
+    from joblib import Parallel, delayed
+    id_annos = Parallel(n_jobs=5)(delayed(idPaper)(url)
+                                  for url in sorted(rrcu._papers))
+    embed()
+    return
 
     # sanity checks
     #print('repr everything')
