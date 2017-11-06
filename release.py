@@ -867,12 +867,20 @@ def clean_dupes(get_annos, repr_issues=False):
 
 def scrapeDoi(url):
     env = os.environ.copy()
-    cmd_line = ['google-chrome-unstable', '--headless', '--dump-dom', url]
+    cmd_line = ['timeout', '30s', 'google-chrome-unstable', '--headless', '--dump-dom', url]
     p = subprocess.Popen(cmd_line, stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          env=env)
     out, err = p.communicate()
+    if p.returncode:
+        print('UTOH')
+        return None
+    elif b'ERROR:headless_shell.cc' in out:
+        print(out)
+        raise IOError('Something is wrong...')
     qurl = quote(url, '')
+    if len(qurl) > 200:
+        qurl = qurl[:200]
     with open(os.path.expanduser(f'~/files/scibot/{qurl}'), 'wb') as f:
         f.write(out)
     both = BeautifulSoup(out, 'lxml')
