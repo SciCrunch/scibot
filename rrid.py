@@ -159,9 +159,6 @@ class Locker:
             print('completed work for', uri)
             self._setQ(uris)
 
-send = run(producer)
-URL_LOCK = Locker(send)
-
 #var canonical_url_obj=document.querySelector("link[rel=\\'canonical\\']");
 #var canonical_url=canonical_url_obj?canonical_url_obj.href:null;
 #var doi_obj=document.querySelector("meta[name=\\'DC.Identifier\\']");
@@ -216,87 +213,6 @@ def bookmarklet(request):
 
 def validatebookmarklet(request):
     return bookmarklet_wrapper(request, 'validaterrid')
-
-def rrid(request):
-    return rrid_wrapper(request, username, api_token, group, 'logs/rrid/')
-
-def validaterrid(request):
-    return rrid_wrapper(request, username, api_token, group2, 'logs/validaterrid/')
-
-def rrid_wrapper(request, username, api_token, group, logloc):
-    """ Receive an article, parse RRIDs, resolve them, create annotations, log results """
-    h = HypothesisUtils(username=username, token=api_token, group=group)
-    if  request.method == 'OPTIONS':
-        return rrid_OPTIONS(request)
-    elif request.method == 'POST':
-        return rrid_POST(request, h, logloc)
-    else:
-        return Response(status_code=405)
-
-def rrid_OPTIONS(request):
-    response = Response()
-    request_headers = request.headers['Access-Control-Request-Headers'].lower()
-    request_headers = re.findall('\w(?:[-\w]*\w)', request_headers)
-    response_headers = ['access-control-allow-origin']
-    for req_acoa_header in request_headers:
-        if req_acoa_header not in response_headers:
-            response_headers.append(req_acoa_header)
-    response_headers = ','.join(response_headers)
-    response.headers.update({
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': '%s' % response_headers
-        })
-    response.status_int = 204
-    return response
-
-def rrid_POST(request, h, logloc):
-    target_uri, doi, head, body, text = process_POST_request(request)
-    running = URL_LOCK.start_uri(target_uri)
-    print(target_uri)
-    if running:
-        print('################# EARLY EXIT')
-        return running
-    cleaned_text = clean_text(text)
-    tags, unresolved_exacts = existing_tags(target_uri, h)
-
-    if doi:
-        pmid = get_pmid(doi)
-        annotate_doi_pmid(target_uri, doi, pmid, h, tags)
-    else:
-        pmid = None
-
-    found_rrids = {}
-    existing = []
-
-    finder = find_rrids
-
-    def checker(found):
-        prefix, exact, exact_for_hypothesis, suffix = found
-        return not check_already_submitted(exact, exact_for_hypothesis, found_rrids, tags, unresolved_exacts)
-
-    def resolver(found):
-        prefix, exact, exact_for_hypothesis, suffix = found
-        return rrid_resolver_xml(exact, found_rrids)
-
-    def submitter(found, resolved):
-        return submit_to_h(target_uri, found, resolved, h, found_rrids, existing)
-
-    processText = make_find_check_resolve_submit(finder, checker, resolver, submitter)
-
-    responses = list(processText(cleaned_text))
-
-    results = ', '.join(found_rrids.keys())
-    write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h)
-    write_log(target_uri, doi, pmid, found_rrids, head, body, text, h)
-
-    r = Response(results)
-    r.content_type = 'text/plain'
-    r.headers.update({
-        'Access-Control-Allow-Origin':'*',
-    })
-
-    URL_LOCK.stop_uri(target_uri)
-    return r
 
 Found = Tuple[str, str, str, str]
 Finder = Callable[[str], Iterable[Found]]
@@ -616,6 +532,90 @@ def main(local=False):#, lock=None, urls=None):
 
     from wsgiref.simple_server import make_server
     from pyramid.config import Configurator
+
+    send = run(producer)
+    URL_LOCK = Locker(send)
+
+    def rrid(request):
+        return rrid_wrapper(request, username, api_token, group, 'logs/rrid/')
+
+    def validaterrid(request):
+        return rrid_wrapper(request, username, api_token, group2, 'logs/validaterrid/')
+
+    def rrid_wrapper(request, username, api_token, group, logloc):
+        """ Receive an article, parse RRIDs, resolve them, create annotations, log results """
+        h = HypothesisUtils(username=username, token=api_token, group=group)
+        if  request.method == 'OPTIONS':
+            return rrid_OPTIONS(request)
+        elif request.method == 'POST':
+            return rrid_POST(request, h, logloc)
+        else:
+            return Response(status_code=405)
+
+    def rrid_OPTIONS(request):
+        response = Response()
+        request_headers = request.headers['Access-Control-Request-Headers'].lower()
+        request_headers = re.findall('\w(?:[-\w]*\w)', request_headers)
+        response_headers = ['access-control-allow-origin']
+        for req_acoa_header in request_headers:
+            if req_acoa_header not in response_headers:
+                response_headers.append(req_acoa_header)
+        response_headers = ','.join(response_headers)
+        response.headers.update({
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': '%s' % response_headers
+            })
+        response.status_int = 204
+        return response
+
+    def rrid_POST(request, h, logloc):
+        target_uri, doi, head, body, text = process_POST_request(request)
+        running = URL_LOCK.start_uri(target_uri)
+        print(target_uri)
+        if running:
+            print('################# EARLY EXIT')
+            return running
+        cleaned_text = clean_text(text)
+        tags, unresolved_exacts = existing_tags(target_uri, h)
+
+        if doi:
+            pmid = get_pmid(doi)
+            annotate_doi_pmid(target_uri, doi, pmid, h, tags)
+        else:
+            pmid = None
+
+        found_rrids = {}
+        existing = []
+
+        finder = find_rrids
+
+        def checker(found):
+            prefix, exact, exact_for_hypothesis, suffix = found
+            return not check_already_submitted(exact, exact_for_hypothesis, found_rrids, tags, unresolved_exacts)
+
+        def resolver(found):
+            prefix, exact, exact_for_hypothesis, suffix = found
+            return rrid_resolver_xml(exact, found_rrids)
+
+        def submitter(found, resolved):
+            return submit_to_h(target_uri, found, resolved, h, found_rrids, existing)
+
+        processText = make_find_check_resolve_submit(finder, checker, resolver, submitter)
+
+        responses = list(processText(cleaned_text))
+
+        results = ', '.join(found_rrids.keys())
+        write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h)
+        write_log(target_uri, doi, pmid, found_rrids, head, body, text, h)
+
+        r = Response(results)
+        r.content_type = 'text/plain'
+        r.headers.update({
+            'Access-Control-Allow-Origin':'*',
+        })
+
+        URL_LOCK.stop_uri(target_uri)
+        return r
 
     config = Configurator()
 
