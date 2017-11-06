@@ -896,7 +896,11 @@ def idPaper(url):
         doi = scrapeDoi(url)
         if doi is not None:
             print(doi)
-            pmid = get_pmid(doi)
+            try:
+                pmid = get_pmid(doi)
+            except:  # FIXME stopgap for json weirdness
+                print('WARNING json malformed in get_pmid')
+                pmid = None
             print(pmid)
             resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_private, [])
             print('new doi')
