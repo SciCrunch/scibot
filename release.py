@@ -549,7 +549,7 @@ class RRIDCuration(HypothesisHelper):
                      f'<a href={idents_link}>identifiers.org</a>\n'
                      '</p>') if self.rrid else ''
 
-            second_hr = '<hr>\n' if ALERT and not (curator_text or curator_note_text or links) else ''
+            second_hr = '<hr>\n' if curator_text or curator_note_text or links else ''
             return (f'{ALERT}'
                     f'{curator_text}'
                     f'{curator_note_text}'
@@ -674,7 +674,7 @@ class RRIDCuration(HypothesisHelper):
                 return pa
 
     def post_public(self):
-        if self._public_anno is not None:  # dupes of others may go first
+        if self._public_anno is None:  # dupes of others may go first
             payload = self.public_payload  # XXX TODO
             if payload:
                 response = self.h_public.post_annotation(payload)
@@ -801,13 +801,39 @@ def sanity_and_stats(rc):
     # # # covers
     # rrid | no rrid
     # resolved, unresolved | 
-    # unresolved incorrect, unresolved
-    with_rrid = [r for r in rr if r.rrid]
+    # duplicates, no duplicates
+    with_rrid = set(r for r in rr if r.rrid)
+    none_rrid = set(r for r in rr if r.rrid is None)
+
+    resolved = set(r for r in with_rrid if r.proper_citation)
+    unresolved = set(r for r in with_rrid if not r.proper_citation)
+
+    with_dupes = set(r for r in rr if r.duplicates)
+    none_dupes = set(r for r in rr if not r.duplicates)
+
+    with_val = set(r for r in rr if r.Validated)
+    none_val = set(r for r in rr if not r.Validated)
+
+    with_cur = set(r for r in rr if r.curators)
+    none_cur = set(r for r in rr if not r.curators)
+
+    # # # first release
+
+    none_dupes_resolved = resolved & none_dupes
+    fr_best = none_dupes_resolved & with_val
+    fr_better = none_dupes_resolved & (with_cur - with_val)
+    fr_good = none_dupes_resolved & none_cur
+    dj = disjointCover(none_dupes_resolved, fr_best, fr_better, fr_good)
+    print('We are disjoint and covering everything we think?', dj)
+    first_release = list(none_dupes_resolved)
+
+    embed()
+    return
+
+    # # annoyances
+
     rrids_with_space = [r for r in with_rrid if ' ' in r.rrid]  # XXX
     #assert not rrids_with_space, f'You have rrids with spaces {rrids_with_space}'
-    unresolved = [r for r in rr if r.rrid and not r.proper_citation]
-    none_rrid = [r for r in rr if r.rrid is None]
-
     incor_val = [r for r in rr
                  if allMembers(r.public_tags, r.INCOR_TAG, r.VAL_TAG)]
 
@@ -837,20 +863,21 @@ def sanity_and_stats(rc):
         RRIDCuration.byId('4EMeDplzEeepi6M5j1gMtw'),
         RRIDCuration.byId('zjHIIB83EeehiXsJvha0ow'),  # should include
         RRIDCuration.byId('UN4vkAUoEeeUEwvC870_Uw'),  # why is the nested reply not showing???!!?
-        RRIDCuration.byId('VE23rgUoEeet9Zetzr9DJA'),  # corrected rrid not overriding
+        #RRIDCuration.byId('VE23rgUoEeet9Zetzr9DJA'),  # corrected rrid not overriding
     ]
 
+    # # quality rankings
     best = [r for r in rr if r.rrid and r.proper_citation and r.Validated]
     better = [r for r in rr if r.rrid and r.proper_citation and not r.Validated and r.curators]
     good = [r for r in rr if r.rrid and r.proper_citation and not r.Validated and not r.curators]
     assert set(good) == set(nrc)
 
+    # # corrected
     rr_corrected = [r for r in rr if r.rrid and r.corrected]
     best_corrected = [r for r in best if r.rrid and r.corrected]
     better_corrected = [r for r in better if r.rrid and r.corrected]
     a = set(rr_corrected) - set(best_corrected)
     b = a - set(better_corrected)  # XXX
-
 
     best_incor = [r for r in rr if r.rrid is None and r.INCOR_TAG in r.public_tags]
     none_pagenotes = [r for r in rr if r._type == 'pagenote']
