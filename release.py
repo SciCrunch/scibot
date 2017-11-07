@@ -582,7 +582,7 @@ class RRIDCuration(HypothesisHelper):
                      f'{self.proper_citation}\n'
                      '</p>\n'
                      f'<p id="{p.Res}">SciCrunch record: <a href="{self.rridLink}">{self.rrid}</a><p>\n'
-                     '<p id="{p.AltRes}">Alternate resolvers:\n'
+                     f'<p id="{p.AltRes}">Alternate resolvers:\n'
                      f'<a href="{resolver_xml_link}">SciCrunch xml</a>\n'
                      f'<a href="{nt2_link}">N2T</a>\n'
                      f'<a href="{idents_link}">identifiers.org</a>\n'
