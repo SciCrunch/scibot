@@ -94,14 +94,28 @@ def mproperty_set(inst, func_name, value):
         raise
     setattr(inst, property_name, value)
 
+
+class PublicParagraphTags:
+    Alert = 'alert'
+    CuratorNote = 'curator-note'
+    Curators = 'curators'
+    Citation = 'inline-citation'
+    Res = 'main-resolver'
+    AltRes = 'alt-resolvers'
+    Docs = 'documentation'
+    CurLinks = 'curation-links'
+
+
 class PublicAnno(HypothesisHelper):
     @property
     def private_ids(self):
-        soup = BeautifulSoup(self._text)  # FIXME etree?
+        soup = BeautifulSoup(self._text, 'lxml')  # FIXME etree?
         p = soup.find('p', {'id':'curation-links'})
         if p is not None:
-            [a['href'] for a in p.find_all('a')]
-        return idFromShareLink(link)
+            return [a['href'] for a in p.find_all('a')]
+        else:
+            return []
+
 
 class RRIDCuration(HypothesisHelper):
     resolver = 'http://scicrunch.org/resolver/'
@@ -552,30 +566,23 @@ class RRIDCuration(HypothesisHelper):
     @property
     def public_text(self):  # FIXME duplicates
         # paragraph id= tags
-        pAlert = 'alert'
-        pCuratorNote = 'curator-note'
-        pCurators = 'curators'
-        pCitation = 'inline-citation'
-        pRes = 'main-resolver'
-        pAltRes = 'alt-resolvers'
-        pDocs = 'documentation'
-        pCurLinks = 'curation-links'
+        p = PublicParagraphTags
         
         if self.isAstNode:
-            ALERT = f'<p id="{pAlert}">{self.alert}</p>\n<hr>\n' if self.alert else ''
-            curator_notes = ''.join(f'<p id="{pCuratorNote}">Curator note: {cn}</p>\n' for cn in self.curator_notes)
+            ALERT = f'<p id="{p.Alert}">{self.alert}</p>\n<hr>\n' if self.alert else ''
+            curator_notes = ''.join(f'<p id="{p.CuratorNote}">Curator note: {cn}</p>\n' for cn in self.curator_notes)
             curator_note_text = f'{curator_notes}' if self.curator_notes else ''
             curators = ' '.join(f'@{c}' for c in self.curators)
-            curator_text = f'<p id="curators">Curator: {curators}</p>\n' if self.curators else ''
+            curator_text = f'<p id="{p.Curators}">Curator: {curators}</p>\n' if self.curators else ''
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             nt2_link = f'http://nt2.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
             links = (f'<p>Resource used:</p>\n'
-                     '<p id="{pCitation}">\n'
+                     f'<p id="{p.Citation}">\n'
                      f'{self.proper_citation}\n'
                      '</p>\n'
-                     f'<p id="{pRes}">SciCrunch record: <a href="{self.rridLink}">{self.rrid}</a><p>\n'
-                     '<p id="{pAltRes}">Alternate resolvers:<br>\n'
+                     f'<p id="{p.Res}">SciCrunch record: <a href="{self.rridLink}">{self.rrid}</a><p>\n'
+                     '<p id="{p.AltRes}">Alternate resolvers:\n'
                      f'<a href="{resolver_xml_link}">SciCrunch xml</a>\n'
                      f'<a href="{nt2_link}">N2T</a>\n'
                      f'<a href="{idents_link}">identifiers.org</a>\n'
@@ -583,7 +590,7 @@ class RRIDCuration(HypothesisHelper):
 
             _slinks = sorted([self.shareLink] + [r.shareLink for r in self.duplicates])
             slinks = ''.join(f'<a href="{sl}"></a>\n' for sl in _slinks)
-            curation_links = ('<p id="{pCurLinks}">\n'
+            curation_links = (f'<p id="{p.CurLinks}">\n'
                               f'{slinks}'
                               '</p>\n')
 
@@ -594,7 +601,7 @@ class RRIDCuration(HypothesisHelper):
                     f'{curator_note_text}'
                     f'{links}'
                     f'{second_hr}'
-                    '<p id="{pDocs}">\n'
+                    f'<p id="{p.Docs}">\n'
                     f'<a href="{self.docs_link}">What is this?</a>\n'
                     '</p>\n'
                     f'{curation_links}'
@@ -869,6 +876,8 @@ def sanity_and_stats(rc):
     dj = disjointCover(none_dupes_resolved, fr_best, fr_better, fr_good)
     print('We are disjoint and covering everything we think?', dj)
     first_release = list(none_dupes_resolved)
+
+    testing = list(with_val & with_dupes)[0]
 
     # posted = [r.post_public() for r in first_release]
     embed()
