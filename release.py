@@ -7,7 +7,7 @@ from urllib.parse import quote
 import requests
 from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers
-from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer
+from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from export import api_token, username, group, group_public, bad_tags, get_proper_citation
 from rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
@@ -94,9 +94,18 @@ def mproperty_set(inst, func_name, value):
         raise
     setattr(inst, property_name, value)
 
+class PublicAnno(HypothesisHelper):
+    @property
+    def private_ids(self):
+        soup = BeautifulSoup(self._text)  # FIXME etree?
+        p = soup.find('p', {'id':'curation-links'})
+        if p is not None:
+            [a['href'] for a in p.find_all('a')]
+        return idFromShareLink(link)
+
 class RRIDCuration(HypothesisHelper):
     resolver = 'http://scicrunch.org/resolver/'
-    docs_link = 'http://scicrunch.org/resources'  # TODO update with explication of the tags
+    docs_link = 'https://scicrunch.org/resources/about/scibot'  # TODO update with explication of the tags
     REPLY_TAG = 'RRIDCUR:Released'
     #SKIP_DUPE_TAG = 'RRIDCUR:Duplicate-Released'  # sigh...
     SUCCESS_TAG = 'RRIDCUR:Released'
@@ -111,24 +120,25 @@ class RRIDCuration(HypothesisHelper):
     private_replies = {}  # in cases where a curator made the annotation
     objects = {}
     identifiers = {}  # paper id: {uri:, doi:, pmid:}
+    _rrids = {}
     _papers = {}
     _xmllib = {}
     _done_all = False
-    known_bad = [
-        #'UPhsBq-DEeegjsdK6CuueQ',
-        #'UI4WWK95Eeea6a_iF0jHWg',
-        #'HdNDhK93Eeem7sciBew4cw',
-        #'TwobZK91Eee7P1c_azGIHA',
-        #'ZdtjrK91EeeaLwfGBVmqcQ',
-        #'KU1eDKh-EeeX9HMjEOC6rA',
-        #'uvwscqheEeef8nsbQydcag',
-        #'09rXMqVKEeeAuCfc1MOdeA',
-        #'nBsIdqSHEee2Zr-s9njlHA',
+    maybe_bad = [
+        'UPhsBq-DEeegjsdK6CuueQ',
+        'UI4WWK95Eeea6a_iF0jHWg',
+        'HdNDhK93Eeem7sciBew4cw',
+        'TwobZK91Eee7P1c_azGIHA',
+        'ZdtjrK91EeeaLwfGBVmqcQ',
+        'KU1eDKh-EeeX9HMjEOC6rA',
+        'uvwscqheEeef8nsbQydcag',
+        '09rXMqVKEeeAuCfc1MOdeA',
+        'nBsIdqSHEee2Zr-s9njlHA',
 
         # max wat
-        #'AVOVWIoXH9ZO4OKSlUhA',  # copy paste error
-        #'nv_XaPiaEeaaYkNwLEhf0g',  # a dupe
-        #'8lMPCAUoEeeyPXsJLLYetg',
+        'AVOVWIoXH9ZO4OKSlUhA',  # copy paste error
+        'nv_XaPiaEeaaYkNwLEhf0g',  # a dupe
+        '8lMPCAUoEeeyPXsJLLYetg',
                 ]
 
     def __init__(self, anno, annos):
@@ -186,6 +196,16 @@ class RRIDCuration(HypothesisHelper):
                             }
                         if o.isReleaseNode:
                             papers[o.uri]['rrids'][o.rrid]['objects'].add(o)
+
+    @classmethod
+    def _do_rrids(cls):
+        rrids = cls._rrids
+        if cls._done_loading:
+            for i, o in cls.objects.items():
+                #if o.rrid is not None:  # someday this will come back to haunt us
+                if o.rrid not in rrids:
+                    rrids[o.rrid] = set()
+                rrids[o.rrid].add(o)
 
     @classmethod
     def _get_duplicates(cls):
@@ -350,7 +370,7 @@ class RRIDCuration(HypothesisHelper):
         maybe = [t for t in self._fixed_tags if t not in self.skip_tags and 'RRID:' in t]
         if maybe:
             if len(maybe) > 1:
-                if self.id not in self.known_bad:
+                if self.id:
                     raise ValueError(f'More than one rrid in {maybe} \'{self.id}\' {self.shareLink}')
             if self._InsufficientMetadata:
                 # RRIDCUR:InsufficientMetadata RRIDs have different semantics...
@@ -531,31 +551,54 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def public_text(self):  # FIXME duplicates
+        # paragraph id= tags
+        pAlert = 'alert'
+        pCuratorNote = 'curator-note'
+        pCurators = 'curators'
+        pCitation = 'inline-citation'
+        pRes = 'main-resolver'
+        pAltRes = 'alt-resolvers'
+        pDocs = 'documentation'
+        pCurLinks = 'curation-links'
+        
         if self.isAstNode:
-
-            ALERT = f'<p>{self.alert}</p>\n<hr>\n' if self.alert else ''
-            curator_notes = ''.join(f'<p>Curator note: {cn}</p>\n' for cn in self.curator_notes)
+            ALERT = f'<p id="{pAlert}">{self.alert}</p>\n<hr>\n' if self.alert else ''
+            curator_notes = ''.join(f'<p id="{pCuratorNote}">Curator note: {cn}</p>\n' for cn in self.curator_notes)
             curator_note_text = f'{curator_notes}' if self.curator_notes else ''
             curators = ' '.join(f'@{c}' for c in self.curators)
-            curator_text = f'<p>Curator: {curators}</p>\n' if self.curators else ''
+            curator_text = f'<p id="curators">Curator: {curators}</p>\n' if self.curators else ''
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             nt2_link = f'http://nt2.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
-            links = (f'<p>Resource used:<br>\n{self.proper_citation}\n</p>\n'
-                     f'<p>SciCrunch record: <a href={self.rridLink}>{self.rrid}</a><p>\n'
-                     '<p>Alternate resolvers:<br>\n'
-                     f'<a href={resolver_xml_link}>SciCrunch xml</a>\n'
-                     f'<a href={nt2_link}>N2T</a>\n'
-                     f'<a href={idents_link}>identifiers.org</a>\n'
-                     '</p>') if self.rrid else ''
+            links = (f'<p>Resource used:</p>\n'
+                     '<p id="{pCitation}">\n'
+                     f'{self.proper_citation}\n'
+                     '</p>\n'
+                     f'<p id="{pRes}">SciCrunch record: <a href="{self.rridLink}">{self.rrid}</a><p>\n'
+                     '<p id="{pAltRes}">Alternate resolvers:<br>\n'
+                     f'<a href="{resolver_xml_link}">SciCrunch xml</a>\n'
+                     f'<a href="{nt2_link}">N2T</a>\n'
+                     f'<a href="{idents_link}">identifiers.org</a>\n'
+                     '</p>\n') if self.rrid else ''
+
+            _slinks = sorted([self.shareLink] + [r.shareLink for r in self.duplicates])
+            slinks = ''.join(f'<a href="{sl}"></a>\n' for sl in _slinks)
+            curation_links = ('<p id="{pCurLinks}">\n'
+                              f'{slinks}'
+                              '</p>\n')
 
             second_hr = '<hr>\n' if curator_text or curator_note_text or links else ''
-            return (f'{ALERT}'
+            return ('<html><body>\n'
+                    f'{ALERT}'
                     f'{curator_text}'
                     f'{curator_note_text}'
                     f'{links}'
                     f'{second_hr}'
-                    f'<p>\n<a href={self.docs_link}>What is this?</a>\n</p>')
+                    '<p id="{pDocs}">\n'
+                    f'<a href="{self.docs_link}">What is this?</a>\n'
+                    '</p>\n'
+                    f'{curation_links}'
+                    '</body></html>\n')
 
     @property
     def _fixed_tags(self):
@@ -827,6 +870,7 @@ def sanity_and_stats(rc):
     print('We are disjoint and covering everything we think?', dj)
     first_release = list(none_dupes_resolved)
 
+    # posted = [r.post_public() for r in first_release]
     embed()
     return
 
