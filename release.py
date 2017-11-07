@@ -104,7 +104,7 @@ class RRIDCuration(HypothesisHelper):
     CORR_TAG = 'RRIDCUR:Corrected'
     VAL_TAG = 'RRIDCUR:Validated'
     skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
-    skip_anno_tags = 'RRIDCUR:InsufficientMetadata',  # tags indicating that we should not release to public
+    skip_users = 'mpairish',
     h_private = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
     h_public = HypothesisUtils(username=username, token=api_token, group=group_public, max_results=100000)
     public_annos = {}  # for
@@ -245,11 +245,17 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def isAstNode(self):
-        if (self._type == 'annotation' and
+        if self._anno.user in self.skip_users:
+            return False
+        elif (self._type == 'annotation' and
             self._fixed_tags):
             return True
         else:
             return False
+
+    @property
+    def replies(self):
+        return set(r for r in super().replies if r._anno.user not in self.skip_users)
 
     @property
     def already_released_or_skipped(self):
@@ -257,12 +263,10 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def isReleaseNode(self):
-        if anyMembers(self._fixed_tags, *self.skip_anno_tags):
+        if self._InsufficientMetadata:
             return False
-        #elif self in self._duplicates_not_to_release:  # TODO post private reply to mark these
-            #return False
-        #elif 'RRIDCUR:Duplicate' in self._fixed_tags and not self.proper_citation:  # TODO remove?
-            #return False
+        elif self.NotRRID:
+            return False
         elif (self.rrid is None and
               self._Missing and
               'RRID:' not in self._text):
@@ -283,27 +287,43 @@ class RRIDCuration(HypothesisHelper):
         if self._done_loading:
             return self._papers[self.uri]
 
-    @property
+    @mproperty
     def uri(self): return self._anno.uri
 
-    @property
+    @mproperty
     def target(self): return self._anno.target
 
-    @property
+    @mproperty
     def _Incorrect(self):
         return self.INCOR_TAG in self._fixed_tags
 
-    @property
+    @mproperty
+    def _InsufficientMetadata(self):
+        return 'RRIDCUR:InsufficientMetadata' in self._fixed_tags
+
+    @mproperty
     def _Missing(self):
         return 'RRIDCUR:Missing' in self._fixed_tags
 
-    @property
+    @mproperty
+    def _NotRRID(self):
+        return 'RRIDCUR:NotRRID' in self._fixed_tags
+
+    @mproperty
+    def NotRRID(self):
+        return bool([r for r in self.replies if r._NotRRID]) or self._NotRRID
+
+    @mproperty
     def _Unrecognized(self):
         return 'RRIDCUR:Unrecognized' in self._fixed_tags
 
-    @property
+    @mproperty
     def _Validated(self):
         return self.VAL_TAG in self._fixed_tags
+
+    @mproperty
+    def Validated(self):
+        return bool([r for r in self.replies if r._Validated]) or self._Validated
 
     @property
     def alert(self):
@@ -332,7 +352,7 @@ class RRIDCuration(HypothesisHelper):
             if len(maybe) > 1:
                 if self.id not in self.known_bad:
                     raise ValueError(f'More than one rrid in {maybe} \'{self.id}\' {self.shareLink}')
-            if anyMembers(self._fixed_tags, *self.skip_anno_tags):
+            if self._InsufficientMetadata:
                 # RRIDCUR:InsufficientMetadata RRIDs have different semantics...
                 rrid = None
             else:
@@ -386,11 +406,14 @@ class RRIDCuration(HypothesisHelper):
                 rrid = 'RRID:' + srrid[-1]
 
         # output logic
+        reps = sorted([r for r in self.replies if r.rrid], key=lambda r: r._anno.updated)
+        rtags = [t for r in self.replies for t in r.tags]
         if self._type == 'reply':
-            return rrid
+            if reps:
+                return reps[0].rrid  # latest RRID tag gets precidence  # FIXME bad if the other chain more recent... need to propatage updated...
+            else:
+                return rrid
         elif self._type == 'annotation':
-            reps = [r for r in self.replies if r.rrid]
-            rtags = [t for r in self.replies for t in r.tags]
             if reps:
                 if len(reps) > 1:
                     if len(set(r.rrid for r in reps)) == 1:
@@ -418,7 +441,7 @@ class RRIDCuration(HypothesisHelper):
         if self.rrid:
             return self.resolver + self.rrid
 
-    @property
+    @mproperty
     def corrected(self):
         if self._done_loading and self.rrid is not None:
             if self._original_rrid == self.rrid:
@@ -537,6 +560,8 @@ class RRIDCuration(HypothesisHelper):
     @property
     def _fixed_tags(self):
         # fix bad tags using the annotation-* tags
+        if 'annotation-tags:replace' in self._tags:
+            return []  # these replies should be treated as invisible
         if self.replies:  # TODO
             tags = [t for t in self._tags]
             for reply in self.replies:
@@ -603,8 +628,8 @@ class RRIDCuration(HypothesisHelper):
             tags.add(self.CORR_TAG)
         if self.rrid:
             tags.add(self.rrid)
-            if self._anno.user != self.h_private.username and self.VAL_TAG not in tags:
-                tags.add(self.VAL_TAG)
+            #if self._anno.user != self.h_private.username and self.VAL_TAG not in tags:
+                #tags.add(self.VAL_TAG)  # we are not going add this tag it is _not_ implied
         return sorted(tags)
 
     @property
@@ -736,39 +761,72 @@ class RRIDCuration(HypothesisHelper):
 # repl convenience
 rrcu = RRIDCuration
 
+def disjoint(*sets):
+    return not bool(set.intersection(*(set(s) for s in sets)))
+
+def covering(set_, *covers):
+    return set.union(*(set(c) for c in covers)) == set(set_)
+
+def disjointCover(set_, *covers):
+    return disjoint(*covers) and covering(set_, *covers)
+
 def sanity_and_stats(rc):
-    print('groups')
+    papers = rrcu._papers.values()
+    rr = [r for r in rc if r.isReleaseNode]
+    #with_rrid_good = [r for r in rr if ]
     rp = [r for r in rc if r.replies]
     rpt = [r for r in rp if any(re for re in r.replies if re._text)]
-    rr = [r for r in rc if r.isReleaseNode]
     ns = [r for r in rc if r._anno.user != 'scibot']
 
     # sanity 
-    unresolved = [r for r in rr if r.rrid and not r.proper_citation]
-
+    # # all checks
+    naa = [r for r in rc if not r.isAstNode and r._type == 'annotation']
     incorrect_with_rrid = [r
                            for r in rc
                            if (r.isReleaseNode and
                                r.INCOR_TAG in r.public_tags and
                                r.rrid)]
-    #dupes = [r for r in rc if 'RRIDCUR:Duplicate' in r._fixed_tags]
 
-    # these seem to be from a strange use of RRIDCUR:Duplicate where
-    # I would include the tag if there was another instance of the
-    # RRID that was also found on the page????
-    #dupes_that_arent = [r for r in dupes
-                        #if r.rrid not in [r2.rrid
-                                          #for idr2, r2 in r.paper['nodes'].items()
-                                          #if idr2 is not r.id]]
-    #visconf = [(r1.rrid, sorted(r.rrid for r in r1.paper['nodes'].values()))
-               #for r1 in dupes_that_arent]
-    #links = [r.shareLink for r in dupes_that_arent]
+    # # release checks
+    more_than_one_rrid = [r for r in rr
+                          if len([t for t in r.public_tags if 'RRID:' in t]) > 1]
+    assert not more_than_one_rrid, f'Annos with more than one RRID {more_than_one_rrid}'
+    unvalidated_with_validated_tag = [r for r in rr
+                                      if (not [d for d in r.duplicates if d.Validated] and
+                                          r.VAL_TAG in r.public_tags and
+                                          not r.Validated)]
+    # TODO it is probably better to propagate tags through properties and constructing
+    # the new tags bunch from that instead of how we do it now? the logic would be clearer
+    assert not unvalidated_with_validated_tag, f'HRM unvalidated with val tag... {unvalidated_with_validated_tag}'
+    # # # covers
+    # rrid | no rrid
+    # resolved, unresolved | 
+    # unresolved incorrect, unresolved
+    with_rrid = [r for r in rr if r.rrid]
+    rrids_with_space = [r for r in with_rrid if ' ' in r.rrid]  # XXX
+    #assert not rrids_with_space, f'You have rrids with spaces {rrids_with_space}'
+    unresolved = [r for r in rr if r.rrid and not r.proper_citation]
+    none_rrid = [r for r in rr if r.rrid is None]
 
-    papers = rrcu._papers.values()
-    #paper_sanity = [paper for paper in papers
-                    #if not (len(set(r.rrid for r in paper['nodes'].values() if r.isReleaseNode)) ==
-                            #len([r.rrid for r in paper['nodes'].values() if r.isReleaseNode]))]
+    incor_val = [r for r in rr
+                 if allMembers(r.public_tags, r.INCOR_TAG, r.VAL_TAG)]
 
+    no_reply_or_curator = [r for r in rr
+                           if (r._anno.user == 'scibot' and
+                               r._type == 'annotation' and
+                               not (r.replies or r.curators))]
+
+    ur_nrc = set(no_reply_or_curator) & set(unresolved)
+    nrc = set(no_reply_or_curator) - set(unresolved)
+    assert disjointCover(no_reply_or_curator, ur_nrc, nrc), 'somehow not covering'
+
+    # # unresolved checks
+    #ur_val_big = [r for r in unresolved if r.Validated]
+    ur_val = [r for r in unresolved if r._Validated]
+    ur_cor = [r for r in unresolved if r.corrected]
+    ur_rep = [r for r in unresolved if r.replies and not (r.corrected or r.Validated)]  # XXX
+
+    # report gen
     report = report_gen(papers, unresolved)
     to_review_txt, to_review_html = to_review(unresolved)
 
@@ -776,12 +834,41 @@ def sanity_and_stats(rc):
     trouble_children = [
         RRIDCuration.byId('89qE6KlKEeeAoyf5DRv2SA'),  # both old and new rrid...
         RRIDCuration.byId('KwZFvH4VEeeo4ffGDDoVXA'),  # incor val
+        RRIDCuration.byId('4EMeDplzEeepi6M5j1gMtw'),
+        RRIDCuration.byId('zjHIIB83EeehiXsJvha0ow'),  # should include
+        RRIDCuration.byId('UN4vkAUoEeeUEwvC870_Uw'),  # why is the nested reply not showing???!!?
+        RRIDCuration.byId('VE23rgUoEeet9Zetzr9DJA'),  # corrected rrid not overriding
     ]
 
-    # extrapolated
-    mto = [r for r in rr if len([t for t in r.public_tags if 'RRID:' in t]) > 1]
-    assert not len(mto), 'There are entries with more than one RRID you should look into that.'
-    iv = [r for r in rr if allMembers(r.public_tags, 'RRIDCUR:Incorrect', 'RRIDCUR:Validated')]
+    best = [r for r in rr if r.rrid and r.proper_citation and r.Validated]
+    better = [r for r in rr if r.rrid and r.proper_citation and not r.Validated and r.curators]
+    good = [r for r in rr if r.rrid and r.proper_citation and not r.Validated and not r.curators]
+    assert set(good) == set(nrc)
+
+    rr_corrected = [r for r in rr if r.rrid and r.corrected]
+    best_corrected = [r for r in best if r.rrid and r.corrected]
+    better_corrected = [r for r in better if r.rrid and r.corrected]
+    a = set(rr_corrected) - set(best_corrected)
+    b = a - set(better_corrected)  # XXX
+
+
+    best_incor = [r for r in rr if r.rrid is None and r.INCOR_TAG in r.public_tags]
+    none_pagenotes = [r for r in rr if r._type == 'pagenote']
+    none_annos = [r for r in none_rrid if r._type == 'annotation']
+    assert disjointCover(none_rrid, none_pagenotes, none_annos)
+    none_not_incor = set(none_annos) - set(best_incor)  # review these
+
+    maybe_covers = (set(best), set(best_corrected), set(better), set(best_incor),
+                    set(none_pagenotes), set(none_not_incor))
+    maybe_all = covering(set(rr), *maybe_covers)
+    if not maybe_all:
+        print('Missing', len(rr) - len(set.union(*maybe_covers)), 'annotations')
+
+    me_review = [*rrids_with_space]
+    other_review = [*incor_val, *ur_val, *ur_cor]
+
+    print(f'For me:    {len(me_review)}')
+    print(f'For other: {len(other_review)}')
 
     embed()
 
@@ -826,6 +913,7 @@ def report_gen(papers, unresolved):
     with open('rridcur-report.txt', 'wt') as f:
         f.write(report)
 
+    print(report)
     return report
 
 def to_review(unresolved):
@@ -909,6 +997,12 @@ def idPaper(url):
         print(doi)
         print('already found')
 
+def review(*objects):
+    if len(objects) > 15:
+        raise IOError('Trying to review too many ids at once, limit is 15')
+    for o in objects:
+        os.system('google-chrome-unstable' + o.shareLink)
+
 def main():
     from desc.prof import profile_me
 
@@ -927,20 +1021,24 @@ def main():
     rc = [rrcu(a, annos) for a in annos]
 
     # id all the things
-    from joblib import Parallel, delayed
-    id_annos = []
-    for purl in rrcu._papers:
-        resp = idPaper(purl)
-        id_annos.append(resp)
+    #from joblib import Parallel, delayed
+    #id_annos = []
+    #for purl in rrcu._papers:
+        #resp = idPaper(purl)
+        #id_annos.append(resp)
     #id_annos = Parallel(n_jobs=5)(delayed(idPaper)(url)
                                   #for url in sorted(rrcu._papers))
-    embed()
-    return
+    #embed()
+    #return
 
     # sanity checks
     #print('repr everything')
     #_ = [repr(r) for r in rc]  # exorcise the spirits  (this is the slow bit, joblib breaks...)
-    stats = sanity_and_stats(rc)
+    try:
+        stats = sanity_and_stats(rc)
+    except AssertionError as e:
+        print(e)
+        embed()
 
 if __name__ == '__main__':
     main()
