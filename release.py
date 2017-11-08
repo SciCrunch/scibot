@@ -8,11 +8,11 @@ import requests
 from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
-from export import api_token, username, group, group_public, bad_tags, get_proper_citation
+from export import api_token, username, group, group_staging, bad_tags, get_proper_citation
 from rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
 
-if group_public == '__world__':
+if group_staging == '__world__':
     raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
 
 if group.startswith('5'):
@@ -22,7 +22,8 @@ elif group.startswith('4'):
     print('Test annos')
     memfile = '/tmp/test-scibot-annotations.pickle'
 
-get_annos = Memoizer(api_token, username, group, memoization_file=memfile)
+get_annos = Memoizer(memfile, api_token, username, group)
+get_pannos = Memoizer(None, api_token, username, group_staging)
 
 def getPMID(tags):
     # because sometime there is garbage in the annotations
@@ -106,15 +107,63 @@ class PublicParagraphTags:
     CurLinks = 'curation-links'
 
 
-class PublicAnno(HypothesisHelper):
+class PublicAnno(HypothesisHelper):  # TODO use this to generate the annotation in the first place
+    staging_group = group_staging
+    release_group = '__world__'
+    h_staging = HypothesisUtils(username=username, token=api_token, group=group_staging, max_results=100000)
+    objects = {}
     @property
     def private_ids(self):
         soup = BeautifulSoup(self._text, 'lxml')  # FIXME etree?
         p = soup.find('p', {'id':'curation-links'})
         if p is not None:
-            return [a['href'] for a in p.find_all('a')]
+            return [idFromShareLink(a['href']) for a in p.find_all('a')]
         else:
             return []
+
+    @property
+    def release_permissions(self):
+        out = self._permissions  # safe since the dict is copied by HypothesisAnnotation
+        out['read'] = ['group:' + self.release_group]
+        return out
+
+    @property
+    def _release_payload(self):
+        payload = {'group':self.release_group,
+                   'permissions':self.release_permissions}
+        return payload
+
+    def release__world__(self):
+        print('This has not been implemented in api yet.')
+        return None
+        r = self.h_staging.patch_annotation(self.id, self._release_payload)
+        self._release_record = r
+        return r
+
+    def unrelease__world__(self):
+        print('This has not been implemented in api yet.')
+        return None
+        if hasattr(self, '_release_record') or self._anno.group == self.release_group:
+            payload = {'group':self.staging_group,
+                       'permissions':self._permissions}
+            r = self.h_staging.patch_annotation(self.id, payload)
+            self._unrelease_record = r
+            return r
+
+    def __repr__(self, depth=0):
+        start = '|' if depth else ''
+        t = ' ' * 4 * depth + start
+
+        lp = f'\n{t}'
+        idp = 'private_ids:  '
+        indent = lp + ' ' * len(idp)
+        pid_text = lp + idp + indent.join(f"{shareLinkFromId(i)} RRIDCuration.byId('{i}')"
+                                          for i in self.private_ids)
+
+        string = (f'{pid_text}\n'
+                 )
+        #return HypothesisHelper.__repr__(self, depth=depth, format__repr__for_children=string)
+        return super().__repr__(depth=depth, format__repr__for_children=string)
 
 
 class RRIDCuration(HypothesisHelper):
@@ -128,8 +177,8 @@ class RRIDCuration(HypothesisHelper):
     VAL_TAG = 'RRIDCUR:Validated'
     skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
     skip_users = 'mpairish',
-    h_private = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
-    h_public = HypothesisUtils(username=username, token=api_token, group=group_public, max_results=100000)
+    h_curation = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
+    h_staging = PublicAnno.h_staging
     public_annos = {}  # for
     private_replies = {}  # in cases where a curator made the annotation
     objects = {}
@@ -163,7 +212,7 @@ class RRIDCuration(HypothesisHelper):
                 #print(HypothesisHelper(anno, annos))
                 #embed()
                 #raise BaseException('WHY ARE YOU GETTING CALLED MULTIPLE TIMES?')
-            self._fetch_xmls(os.path.expanduser('~/ni/scibot_rrid_xml.pickle'))
+            self._fetch_xmls(os.path.expanduser('~/ni/scibot/scibot_rrid_xml.pickle'))
             self._do_papers()
             self.__class__._done_all = True
 
@@ -407,7 +456,7 @@ class RRIDCuration(HypothesisHelper):
                 rrid = 'RRID:' + self.exact.strip()
             else:
                 rrid = None
-        elif self._anno.user != self.h_private.username:
+        elif self._anno.user != self.h_curation.username:
             # special case for the old practice of putting the correct rrid in the text instead of the tags
             if 'RRID:' in self._text:
                 try:
@@ -512,13 +561,13 @@ class RRIDCuration(HypothesisHelper):
 
     @property
     def public_user(self):
-        return 'acct:' + self.h_public.username + '@hypothesis.is'
+        return 'acct:' + self.h_staging.username + '@hypothesis.is'
 
     @property
     def text(self):
         return self._text  # XXX short circuit
         reference = f'<p>Public Version: <a href=https://hyp.is/{self.public_id}>{self.public_id}</a></p>'
-        if self._anno.user != self.h_private.username:
+        if self._anno.user != self.h_curation.username:
             return reference
         elif self.isAstNode:
             return reference + self._text
@@ -533,7 +582,7 @@ class RRIDCuration(HypothesisHelper):
     @mproperty
     def _curators(self):
         out = set()
-        if self._anno.user != self.h_private.username:
+        if self._anno.user != self.h_curation.username:
             out.add(self._anno.user)
         if self.replies:
             for r in self.replies:
@@ -550,7 +599,7 @@ class RRIDCuration(HypothesisHelper):
     def _curator_notes(self):
         out = set()
         if self._text:
-            if self._anno.user != self.h_private.username:
+            if self._anno.user != self.h_curation.username:
                 out.add(self._text)
             if self._type == 'annotation':
                 for r in self.replies:
@@ -575,17 +624,17 @@ class RRIDCuration(HypothesisHelper):
             curators = ' '.join(f'@{c}' for c in self.curators)
             curator_text = f'<p id="{p.Curators}">Curator: {curators}</p>\n' if self.curators else ''
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
-            nt2_link = f'http://nt2.net/{self.rrid}'
+            n2t_link = f'http://n2t.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
             links = (f'<p>Resource used:</p>\n'
                      f'<p id="{p.Citation}">\n'
                      f'{self.proper_citation}\n'
                      '</p>\n'
-                     f'<p id="{p.Res}">SciCrunch record: <a href="{self.rridLink}">{self.rrid}</a><p>\n'
+                     f'<p id="{p.Res}">SciCrunch record: <a id="scicrunch.org" href="{self.rridLink}">{self.rrid}</a><p>\n'
                      f'<p id="{p.AltRes}">Alternate resolvers:\n'
-                     f'<a href="{resolver_xml_link}">SciCrunch xml</a>\n'
-                     f'<a href="{nt2_link}">N2T</a>\n'
-                     f'<a href="{idents_link}">identifiers.org</a>\n'
+                     f'<a id="scicrunch.org" href="{resolver_xml_link}">SciCrunch xml</a>\n'
+                     f'<a id="n2t.net" href="{n2t_link}">N2T</a>\n'
+                     f'<a id="identifiers.org" href="{idents_link}">identifiers.org</a>\n'
                      '</p>\n') if self.rrid else ''
 
             _slinks = sorted([self.shareLink] + [r.shareLink for r in self.duplicates])
@@ -678,7 +727,7 @@ class RRIDCuration(HypothesisHelper):
             tags.add(self.CORR_TAG)
         if self.rrid:
             tags.add(self.rrid)
-            #if self._anno.user != self.h_private.username and self.VAL_TAG not in tags:
+            #if self._anno.user != self.h_curation.username and self.VAL_TAG not in tags:
                 #tags.add(self.VAL_TAG)  # we are not going add this tag it is _not_ implied
         return sorted(tags)
 
@@ -688,19 +737,19 @@ class RRIDCuration(HypothesisHelper):
             return {
                 'uri':self.uri,
                 'target':self.target,
-                'group':self.h_public.group,
+                'group':self.h_staging.group,
                 'user':self.public_user,
-                'permissions':self.h_public.permissions,
+                'permissions':self.h_staging.permissions,
                 'tags':self.public_tags,
                 'text':self.public_text,
             }
 
     @property
     def private_payload(self):
-        #if self._anno.user != self.h_private.username:
+        #if self._anno.user != self.h_curation.username:
         payload = {
-            'group':self.h_private.group,
-            'permissions':self.h_private.permissions,
+            'group':self.h_curation.group,
+            'permissions':self.h_curation.permissions,
             'references':[self.id],  # this matches what the client does
             'target':[{'source':self.uri}],
             'tags':self.private_tags,
@@ -723,11 +772,15 @@ class RRIDCuration(HypothesisHelper):
             if pa is not None:
                 return pa
 
+    def _reset_public_anno(self):
+        if self._public_anno not in self.public_annos:
+            self.paper['rrids'][self.rrid]['public_anno'] = None
+
     def post_public(self):
         if self._public_anno is None:  # dupes of others may go first
             payload = self.public_payload  # XXX TODO
             if payload:
-                response = self.h_public.post_annotation(payload)
+                response = self.h_staging.post_annotation(payload)
                 self._public_response = response
                 anno = HypothesisAnnotation(response.json())
                 if self.rrid is None:
@@ -735,16 +788,17 @@ class RRIDCuration(HypothesisHelper):
                 else:
                     self.paper['rrids'][self.rrid]['public_anno'] = anno
                 self.public_annos[self._public_anno.id] = self._public_anno
+                return anno
 
     def reply_private(self):  # let's keep things immutable
-        response = self.h_private.post_annotation(self.private_payload)
+        response = self.h_curation.post_annotation(self.private_payload)
 
-    def patch_private(self):  # XXX do not use unless you are really sure
+    def patch_curation(self):  # XXX do not use unless you are really sure
         if self.public_id is not None:
-            if self._anno.user != self.h_private.username:
-                response = self.h_private.post_annotation(self.private_payload)
+            if self._anno.user != self.h_curation.username:
+                response = self.h_curation.post_annotation(self.private_payload)
             else:
-                response = self.h_private.patch_annotation(self.id, self.private_payload)
+                response = self.h_curation.patch_annotation(self.id, self.private_payload)
             self._private_response = response
 
     def __repr__(self, depth=0):
@@ -824,6 +878,8 @@ def sanity_and_stats(rc):
     papers = rrcu._papers.values()
     rr = [r for r in rc if r.isReleaseNode]
     #with_rrid_good = [r for r in rr if ]
+
+    """  skip for release
     rp = [r for r in rc if r.replies]
     rpt = [r for r in rp if any(re for re in r.replies if re._text)]
     ns = [r for r in rc if r._anno.user != 'scibot']
@@ -848,6 +904,8 @@ def sanity_and_stats(rc):
     # TODO it is probably better to propagate tags through properties and constructing
     # the new tags bunch from that instead of how we do it now? the logic would be clearer
     assert not unvalidated_with_validated_tag, f'HRM unvalidated with val tag... {unvalidated_with_validated_tag}'
+    #"""
+
     # # # covers
     # rrid | no rrid
     # resolved, unresolved | 
@@ -875,9 +933,17 @@ def sanity_and_stats(rc):
     fr_good = none_dupes_resolved & none_cur
     dj = disjointCover(none_dupes_resolved, fr_best, fr_better, fr_good)
     print('We are disjoint and covering everything we think?', dj)
-    first_release = list(none_dupes_resolved)
+    first_release = sorted(none_dupes_resolved)
 
-    testing = list(with_val & with_dupes)[0]
+    testing = sorted(with_val & with_dupes)
+    tests = testing[-10:]
+    pannos = get_pannos()
+    if not pannos:
+        print('No public annos found.')
+        pannos = list(set(r.post_public() for r in tests))
+    else:
+        print('Found public annos.')
+    pas = [PublicAnno(a, pannos) for a in pannos]
 
     # posted = [r.post_public() for r in first_release]
     embed()
@@ -1070,7 +1136,7 @@ def idPaper(url):
                 print('WARNING json malformed in get_pmid')
                 pmid = None
             print(pmid)
-            resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_private, [])
+            resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_curation, [])
             print('new doi')
             return resp
     else:

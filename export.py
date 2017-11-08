@@ -13,7 +13,7 @@ from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
 group = environ.get('RRIDBOT_GROUP', '__world__')
-group_public = environ.get('RRIDBOT_GROUP_PUBLIC', '__world__')
+group_staging = environ.get('RRIDBOT_GROUP_STAGING', '__world__')
 print(api_token, username, group)  # sanity check
 
 bad_tags = {
