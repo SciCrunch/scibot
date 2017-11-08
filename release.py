@@ -13,8 +13,7 @@ from rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
 
 if group_staging == '__world__':
-    print('yes I have uncommented this')
-    #raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
+    raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
 
 if group.startswith('5'):
     print('Real annos')
@@ -1003,6 +1002,7 @@ def sanity_and_stats(rc, annos):
     #testing = sorted(with_val & with_dupes)
     #tests = testing[-10:]
     #tests = sorted(r for r in fr_better if r.corrected)[-10:]
+    print('getting public annos')
     pannos = get_pannos()
     if not pannos:
         print('No public annos found.')
