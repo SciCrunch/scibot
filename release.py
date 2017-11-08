@@ -102,8 +102,8 @@ class KeyAccessor:
     """ For when your identifiers aren't python compatible. """
     prop = 'id'
     object_container_class = set
-    def __init__(self, objects=tuple()):
-        self.propagate = issubclass(self.object_container_class, KeyAccessor)
+    def __init__(self, objects=tuple(), id_prop=None):
+        self._propagate = issubclass(self.object_container_class, KeyAccessor)
         self._objects = {}
         for o in objects:
             k = getattr(o, self.prop)
@@ -111,13 +111,19 @@ class KeyAccessor:
                 self._objects[k] = self._make_cont()
             self._objects[k].add(o)
 
-        if hasattr(self, 'id_prop'):
-            setattr(self, self.id_prop, getattr(o, id_prop))
+        self._id_prop = None
+        if id_prop is not None:
+            if objects:
+                print('setting id prop')
+                setattr(self, id_prop, getattr(o, id_prop))  # o from the for loop
+            else:
+                self._id_prop = id_prop
 
     def _make_cont(self):
-        cont = self.object_container_class()
-        if self.propagate:
-            cont.id_prop = self.prop
+        if self._propagate:
+            cont = self.object_container_class(id_prop=self.prop)
+        else:
+            cont = self.object_container_class()
         return cont
 
     def remove(self, object_):
@@ -133,9 +139,13 @@ class KeyAccessor:
             self._objects.pop(k)
 
     def add(self, object_):
+        if self._id_prop is not None:
+            setattr(self, self._id_prop, getattr(object_, self._id_prop))
+            self._id_prop = None
         k = getattr(object_, self.prop)
         if k not in self._objects:
             self._objects[k] = self._make_cont()
+
         self._objects[k].add(object_)
 
     def keys(self):
@@ -232,7 +242,10 @@ class RRIDAnno(HypothesisHelper):
     def __init__(self, anno, annos):
         super().__init__(anno, annos)
         if self._done_loading:
-            self.__class__._papers = Papers(self.objects.values())
+            if self._papers is None:
+                self.__class__._papers = Papers(self.objects.values())
+            else:  # FIXME... this could fail...
+                self.__class__._papers.add(self)
             self.__class__._done_all = True
 
     @mproperty
@@ -414,10 +427,14 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
     _annos = {}
     objects = {}
     _papers = None
+
     def __init__(self, anno, annos):
         super().__init__(anno, annos)
+
     @classmethod
     def getByUriRrid(cls, uri, rrid):
+        if cls._papers is None:
+            raise ValueError('PublicAnno has not been loaded yet!')
         r = cls._papers[uri][rrid]
         if r:
             if len(r) > 1:
@@ -426,13 +443,23 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
                 return next(iter(r))
 
     @property
-    def private_ids(self):
+    def curation_ids(self):
         soup = BeautifulSoup(self._text, 'lxml')  # FIXME etree?
         p = soup.find('p', {'id':'curation-links'})
         if p is not None:
             return [idFromShareLink(a['href']) for a in p.find_all('a')]
         else:
             return []
+
+    @property
+    def curation_annos(self):
+        return [Curation.byId(i) for i in self.curation_ids]
+
+    @property
+    def curation_paper(self):
+        if Curation._done_loading:
+            for a in self.curation_annos:
+                return a.paper
 
     @property
     def release_permissions(self):
@@ -468,10 +495,10 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
         t = ' ' * 4 * depth + start
 
         lp = f'\n{t}'
-        idp = 'private_ids:  '
+        idp = 'curation_ids: '
         indent = lp + ' ' * len(idp)
         pid_text = lp + idp + indent.join(f"{shareLinkFromId(i)} Curation.byId('{i}')"
-                                          for i in self.private_ids)
+                                          for i in self.curation_ids)
 
         string = (f'{pid_text}\n'
                  )
@@ -532,94 +559,6 @@ class Curation(RRIDAnno):
                 print('fetching', url)
                 resp = requests.get(url)
                 cls._xmllib[rrid] = resp.content
-
-    @classmethod
-    def _do_papers(cls):
-        papers = cls._papers
-        if cls._done_loading:
-            for i, o in cls.objects.items():
-                if o.uri not in papers:
-                    papers[o.uri] = {'DOI':None,
-                                     'PMID':None,
-                                     'nodes':{},
-                                     'rrids':{}}
-                if o._type == 'pagenote':
-                    papers[o.uri]['DOI'], papers[o.uri]['PMID'] = getIDS(o._fixed_tags)
-                        
-                elif o.isAstNode:
-                    if papers[o.uri]['PMID'] is None and o.rrid is None:
-                        pmid = getPMID(o._fixed_tags)
-                        papers[o.uri]['PMID'] = pmid
-                        #if pmid is None:
-                            #print(o)
-                    else:
-                        papers[o.uri]['nodes'][i] = o
-                        if o.rrid not in papers[o.uri]['rrids']:
-                            papers[o.uri]['rrids'][o.rrid] = {
-                                'public_anno':None,
-                                'objects':set(),
-                            }
-                        if o.isReleaseNode:
-                            papers[o.uri]['rrids'][o.rrid]['objects'].add(o)
-
-    @classmethod
-    def _do_rrids(cls):
-        rrids = cls._rrids
-        if cls._done_loading:
-            for i, o in cls.objects.items():
-                #if o.rrid is not None:  # someday this will come back to haunt us
-                if o.rrid not in rrids:
-                    rrids[o.rrid] = set()
-                rrids[o.rrid].add(o)
-
-    @classmethod
-    def _get_duplicates(cls):
-        return [(p, r, rus)
-                for p, v in cls._papers.items()
-                for r, rus in v['rrids'].items()
-                if len(rus['objects']) > 1]
-
-    @classmethod
-    def _adjudicate_duplicates(cls):
-        objects = cls.objects
-        papers = cls._papers
-        rc = list(objects.values())
-        asserted_dupes = [r for r in rc if 'RRIDCUR:Duplicate' in r._fixed_tags]
-        adupes_that_arent = [r for r in asserted_dupes
-                             if r.rrid not in [r2.rrid
-                                               for idr2, r2 in r.paper['nodes'].items()
-                                               if idr2 is not r.id]]
-        not_dupes = [r for r in rc
-                     if (r.isAstNode and
-                         r.rrid is not None and
-                         r.rrid not in [r2.rrid
-                                        for idr2, r2 in r.paper['nodes'].items()
-                                        if idr2 is not r.id])]
-
-        dupes = [r for r in rc
-                 if (r.isAstNode and
-                     r.rrid is not None and
-                     r.rrid in [r2.rrid
-                                for idr2, r2 in r.paper['nodes'].items()
-                                if idr2 is not r.id])]
-        sets = {}
-        for du in dupes:
-            if du.uri not in sets:
-                sets[du.uri] = {}
-            di = sets[du.uri]
-            if du.rrid not in di:
-                di[du.rrid] = set()
-            rdi = di[du.rrid]
-            rdi.add(du)
-
-        sd = sorted(dupes, key=lambda r:(r.uri, r._anno.updated))
-
-        # in theory could update the mapping in objects...
-        # probably better to create another class that functions on papers and RRIDs
-        # instead of on annotations...
-
-        #cls._duplicates_not_to_release = set()
-        embed()
 
     @property
     def duplicates(self):
@@ -895,19 +834,12 @@ class Curation(RRIDAnno):
 
     @property
     def _public_anno(self):
-        if self.rrid is None:
-            #print('No RRID: will reset _public_anno after posting')
+        # TODO check with the reply that we leave
+        try:
+            pa = PublicAnno.getByUriRrid(self.uri, self.rrid)
+            return pa
+        except (KeyError, ValueError) as e:
             return None
-        else:
-            pa = PublicAnno.getByPaperRRID(self.uri, self.rrid)
-            if pa:
-                if len(pa) > 1:
-                    raise TypeError('')
-                return pa
-
-    def _reset_public_anno(self):
-        if self._public_anno not in self.public_annos:
-            self.paper['rrids'][self.rrid]['public_anno'] = None
 
     def post_public(self):
         if self._public_anno is None:  # dupes of others may go first
@@ -916,13 +848,7 @@ class Curation(RRIDAnno):
                 response = self.h_staging.post_annotation(payload)
                 self._public_response = response
                 anno = HypothesisAnnotation(response.json())
-                if self.rrid is None:
-                    self._public_anno = anno
-                else:
-                    self.paper['rrids'][self.rrid]['public_anno'] = anno
-                PublicAnno._annos.append(anno)
-                PublicAnno(anno, PublicAnno.annos)
-                self.public_annos[self._public_anno.id] = self._public_anno
+                pa = PublicAnno.addAnno(anno)
                 return anno, pa
 
     def reply_private(self):  # let's keep things immutable
@@ -1072,15 +998,19 @@ def sanity_and_stats(rc, annos):
     print('We are disjoint and covering everything we think?', dj)
     first_release = sorted(none_dupes_resolved)
 
-    testing = sorted(with_val & with_dupes)
-    tests = testing[-10:]
-    pannos = get_pannos()
-    if not pannos:
-        print('No public annos found.')
-        pannos = [a for a in set(r.post_public() for r in tests) if a is not None]
-    else:
-        print('Found public annos.')
-    pas = [PublicAnno(a, pannos) for a in pannos]
+
+    if False:
+        testing = sorted(with_val & with_dupes)
+        #tests = testing[-10:]
+        tests = sorted(r for r in fr_better if r.corrected)[-10:]
+        pannos = get_pannos()
+        if not pannos:
+            print('No public annos found.')
+            pannos, pas = zip(*((a, pa) for a, pa in set(r.post_public() for r in tests) if a is not None))
+        else:
+            print('Found public annos.')
+            pas = [PublicAnno(a, pannos) for a in pannos]
+
 
     embed()
     return
@@ -1292,8 +1222,12 @@ def main():
     #clean_dupes(get_annos, repr_issues=True)
     #return
 
-    # loading
+    # fetching
     annos = get_annos()
+    _annos = annos
+    annos = [a for a in annos if a.updated > '2017-10-15']
+
+    # loading
     #@profile_me
     #def load():
         #for a in annos:
