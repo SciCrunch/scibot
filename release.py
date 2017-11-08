@@ -13,7 +13,8 @@ from rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
 
 if group_staging == '__world__':
-    raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
+    print('yes I have uncommented this')
+    #raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
 
 if group.startswith('5'):
     print('Real annos')
@@ -999,17 +1000,16 @@ def sanity_and_stats(rc, annos):
     first_release = sorted(none_dupes_resolved)
 
 
-    if False:
-        testing = sorted(with_val & with_dupes)
-        #tests = testing[-10:]
-        tests = sorted(r for r in fr_better if r.corrected)[-10:]
-        pannos = get_pannos()
-        if not pannos:
-            print('No public annos found.')
-            pannos, pas = zip(*((a, pa) for a, pa in set(r.post_public() for r in tests) if a is not None))
-        else:
-            print('Found public annos.')
-            pas = [PublicAnno(a, pannos) for a in pannos]
+    #testing = sorted(with_val & with_dupes)
+    #tests = testing[-10:]
+    #tests = sorted(r for r in fr_better if r.corrected)[-10:]
+    pannos = get_pannos()
+    if not pannos:
+        print('No public annos found.')
+        #pannos, pas = zip(*((a, pa) for a, pa in set(r.post_public() for r in tests) if a is not None))
+    else:
+        print('Found public annos.')
+        pas = [PublicAnno(a, pannos) for a in pannos]
 
 
     embed()
