@@ -1224,8 +1224,8 @@ def main():
 
     # fetching
     annos = get_annos()
-    _annos = annos
-    annos = [a for a in annos if a.updated > '2017-10-15']
+    #_annos = annos
+    #annos = [a for a in annos if a.updated > '2017-10-15']
 
     # loading
     #@profile_me
