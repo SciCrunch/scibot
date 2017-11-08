@@ -50,7 +50,7 @@ def getIDS(tags):
     return getDOI(tags), getPMID(tags)
     
 def resolve(rrid):
-    return RRIDCuration.resolver + rrid
+    return Curation.resolver + rrid
 
 class mproperty:
     def __init__(self, fget=None, fset=None, fdel=None, doc=None):
@@ -95,6 +95,115 @@ def mproperty_set(inst, func_name, value):
         raise
     setattr(inst, property_name, value)
 
+class KeyAccessor:
+    # XXX whenever annos changes these need to be recreated as well...
+    # if that is too slow then we will need to implement proper add
+    # and delete for only affected items...
+    """ For when your identifiers aren't python compatible. """
+    prop = 'id'
+    object_container_class = set
+    def __init__(self, objects=tuple()):
+        self.propagate = issubclass(self.object_container_class, KeyAccessor)
+        self._objects = {}
+        for o in objects:
+            k = getattr(o, self.prop)
+            if k not in self._objects:
+                self._objects[k] = self._make_cont()
+            self._objects[k].add(o)
+
+        if hasattr(self, 'id_prop'):
+            setattr(self, self.id_prop, getattr(o, id_prop))
+
+    def _make_cont(self):
+        cont = self.object_container_class()
+        if self.propagate:
+            cont.id_prop = self.prop
+        return cont
+
+    def remove(self, object_):
+        k = getattr(object_, self.prop)
+        self._objects[k].remove(object_)
+        if not self._objects[k]:
+            self._objects.pop(k)
+
+    def discard(self, object_):
+        k = getattr(object_, self.prop)
+        self._objects[k].discard(object_)
+        if not self._objects[k]:
+            self._objects.pop(k)
+
+    def add(self, object_):
+        k = getattr(object_, self.prop)
+        if k not in self._objects:
+            self._objects[k] = self._make_cont()
+        self._objects[k].add(object_)
+
+    def keys(self):
+        return sorted(self._objects, key=lambda k: '0' if k is None else k)
+
+    def values(self):
+        for v in self._objects.values():
+            yield v
+
+    def items(self):
+        for k, v in self._objects.items():
+            yield k, v
+
+    def __iter__(self):
+        for k in self._objects:
+            yield k
+
+    def __contains__(self, key):
+        return key in self._objects
+
+    def __getitem__(self, key):
+        try:
+            return self._objects[key]
+        except KeyError:
+            self.__missing__(key)
+
+    #def __setitem__(self, key):
+        #raise TypeError('Cannot set values on this class, it is immutable')
+
+    def __missing__(self, key):
+        raise KeyError(f'{key} not found')
+
+    def __len__(self):
+        return len(self._objects)
+
+    def __repr__(self):
+        return repr({k:v for k,v in self.items()})
+
+    def __str__(self):
+        return str({k:v for k,v in self.items()})
+
+
+class RRIDs(KeyAccessor):
+    """ AKA a Paper """
+    prop = 'rrid'
+    object_container_class = set
+
+    @property
+    def doi(self):
+        if None in self._objects:
+            for o in self._objects[None]:
+                if o._type == 'pagenote':  # FIXME some curators did these as annotations too...
+                    for t in o.tags:
+                        if t.startswith('DOI:'):
+                            return t
+
+    @property
+    def pmid(self):
+        if None in self._objects:
+            for o in self._objects[None]:
+                for t in o.tags:
+                    if t.startswith('PMID:'):
+                        return t
+
+class Papers(KeyAccessor):
+    prop = 'uri'
+    object_container_class = RRIDs
+
 
 class PublicParagraphTags:
     Alert = 'alert'
@@ -106,12 +215,216 @@ class PublicParagraphTags:
     Docs = 'documentation'
     CurLinks = 'curation-links'
 
+class RRIDAnno(HypothesisHelper):
+    resolver = 'http://scicrunch.org/resolver/'
+    REPLY_TAG = 'RRIDCUR:Released'
+    #SKIP_DUPE_TAG = 'RRIDCUR:Duplicate-Released'  # sigh...
+    SUCCESS_TAG = 'RRIDCUR:Released'
+    INCOR_TAG = 'RRIDCUR:Incorrect' 
+    CORR_TAG = 'RRIDCUR:Corrected'
+    VAL_TAG = 'RRIDCUR:Validated'
+    skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
+    _annos = {}
+    objects = {}
+    _papers = None
+    _done_all = False
 
-class PublicAnno(HypothesisHelper):  # TODO use this to generate the annotation in the first place
+    def __init__(self, anno, annos):
+        super().__init__(anno, annos)
+        if self._done_loading:
+            self.__class__._papers = Papers(self.objects.values())
+            self.__class__._done_all = True
+
+    @mproperty
+    def uri(self): return self._anno.uri
+
+    @mproperty
+    def target(self): return self._anno.target
+
+    @property
+    def _fixed_tags(self):
+        # fix bad tags using the annotation-* tags
+        if 'annotation-tags:replace' in self._tags:
+            return []  # these replies should be treated as invisible
+        if self.replies:  # TODO
+            tags = [t for t in self._tags]
+            for reply in self.replies:
+                if 'annotation-tags:replace' in reply._tags:
+                    tags = [t for t in reply._tags if t != 'annotation-tags:replace']
+        else:
+            tags = self._tags
+
+        fixes = {'RRIDCUR:InsufficientMetaData':'RRIDCUR:InsufficientMetadata'}
+        out_tags = []
+        for tag in tags:
+            if tag in bad_tags:
+                tag = tag.replace('RRID:', 'RRIDCUR:')
+            if tag in fixes:
+                tag = fixes[tag]
+            out_tags.append(tag)
+        return out_tags
+
+    @mproperty
+    def _Incorrect(self):
+        return self.INCOR_TAG in self._fixed_tags
+
+    @mproperty
+    def _InsufficientMetadata(self):
+        return 'RRIDCUR:InsufficientMetadata' in self._fixed_tags
+
+    @mproperty
+    def _Missing(self):
+        return 'RRIDCUR:Missing' in self._fixed_tags
+
+    @mproperty
+    def _NotRRID(self):
+        return 'RRIDCUR:NotRRID' in self._fixed_tags
+
+    @mproperty
+    def NotRRID(self):
+        return bool([r for r in self.replies if r._NotRRID]) or self._NotRRID
+
+    @mproperty
+    def _Unrecognized(self):
+        return 'RRIDCUR:Unrecognized' in self._fixed_tags
+
+    @mproperty
+    def _Validated(self):
+        return self.VAL_TAG in self._fixed_tags
+
+    @mproperty
+    def Validated(self):
+        return bool([r for r in self.replies if r._Validated]) or self._Validated
+
+    @property
+    def paper(self):
+        if self._done_loading:
+            return self._papers[self.uri]
+
+    @property
+    def _original_rrid(self):
+        # cannot call self.tags from here
+        # example of case where I need to check for RRIDCUR:Incorrect to make the right determination
+        "-3zMMjc7EeeTBfeviH2gHg"
+        #https://hyp.is/-3zMMjc7EeeTBfeviH2gHg/www.sciencedirect.com/science/article/pii/S0896627317303069
+
+        # TODO case where a curator highlights but there is no rrid but it is present in the reply
+
+        # TODO case where unresolved an no replies
+
+        maybe = [t for t in self._fixed_tags if t not in self.skip_tags and 'RRID:' in t]
+        if maybe:
+            if len(maybe) > 1:
+                if self.id:
+                    raise ValueError(f'More than one rrid in {maybe} \'{self.id}\' {self.shareLink}')
+            if self._InsufficientMetadata:
+                # RRIDCUR:InsufficientMetadata RRIDs have different semantics...
+                rrid = None
+            else:
+                rrid = maybe[0]
+        elif 'RRIDCUR:Unresolved' in self._tags:  # scibot is a good tagger, ok to use _tags ^_^
+            if not self.exact.startswith('RRID:'):
+                rrid = 'RRID:' + self.exact
+            else:
+                rrid = self.exact
+        elif ((self._Unrecognized or self._Validated) and
+              'RRID:' not in self._text and
+              self.exact):
+            if 'RRID:' in self.exact:
+                front, rest = self.exact.split('RRID:')
+                rest = rest.replace(' ', '')
+                rrid = 'RRID:' + rest  # yay for SCRRID:SCR_AAAAAAAHHHHH
+            elif self.exact.startswith('AB_') or self.exact.startswith('IMSR_JAX'):
+                rrid = 'RRID:' + self.exact.strip()
+            else:
+                rrid = None
+        elif self._anno.user != self.h_curation.username:
+            # special case for the old practice of putting the correct rrid in the text instead of the tags
+            if 'RRID:' in self._text:
+                try:
+                    junk, id_ = self._text.split('RRID:')
+                except ValueError as e:
+                    #print('too many RRIDs in text, skipping', self.shareLink, self._text)
+                    id_ = 'lol lol'
+                id_ = id_.strip()
+                if ' ' in id_:  # not going to think to hard on this one
+                    rrid = None
+                else:
+                    rrid = 'RRID:' + id_
+            elif self.exact and self._Incorrect and self.exact.startswith('AB_'):
+                rrid = 'RRID:' + self.exact
+            else:
+                rrid = None
+        else:
+            rrid = None
+
+        return rrid
+            
+    @property
+    def rrid(self):
+        rrid = self._original_rrid
+
+        # fix malformed RRIDs
+        if rrid is not None:
+            srrid = rrid.split('RRID:')
+            if len(srrid) > 2:
+                rrid = 'RRID:' + srrid[-1]
+
+        # output logic
+        reps = sorted([r for r in self.replies if r.rrid], key=lambda r: r._anno.updated)
+        rtags = [t for r in self.replies for t in r.tags]
+        if self._type == 'reply':
+            if reps:
+                return reps[0].rrid  # latest RRID tag gets precidence  # FIXME bad if the other chain more recent... need to propatage updated...
+            else:
+                return rrid
+        elif self._type == 'annotation':
+            if reps:
+                if len(reps) > 1:
+                    if len(set(r.rrid for r in reps)) == 1:
+                        #print(f'WARNING multiple replies with the same rrid in {reps}')
+                        pass  # too much
+                    else:
+                        raise ValueError(f'More than one rrid in {reps}')
+                rep = reps[0]
+                if self.CORR_TAG in rep.tags:
+                    return rep.rrid
+                elif rrid is None:
+                    return rep.rrid
+                elif self.INCOR_TAG in rep._fixed_tags:
+                    return None
+                elif (rrid is not None and
+                      rep.rrid is not None and
+                      rrid != rep.rrid):
+                    return rep.rrid
+            elif self.INCOR_TAG in rtags:
+                return None
+            return rrid
+
+    @property
+    def rridLink(self):
+        if self.rrid:
+            return self.resolver + self.rrid
+
+
+class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the first place
     staging_group = group_staging
     release_group = '__world__'
     h_staging = HypothesisUtils(username=username, token=api_token, group=group_staging, max_results=100000)
+    _annos = {}
     objects = {}
+    _papers = None
+    def __init__(self, anno, annos):
+        super().__init__(anno, annos)
+    @classmethod
+    def getByUriRrid(cls, uri, rrid):
+        r = cls._papers[uri][rrid]
+        if r:
+            if len(r) > 1:
+                raise TypeError('ERROR: Duplicate public annotation on RRID paper!')
+            else:
+                return next(iter(r))
+
     @property
     def private_ids(self):
         soup = BeautifulSoup(self._text, 'lxml')  # FIXME etree?
@@ -157,7 +470,7 @@ class PublicAnno(HypothesisHelper):  # TODO use this to generate the annotation 
         lp = f'\n{t}'
         idp = 'private_ids:  '
         indent = lp + ' ' * len(idp)
-        pid_text = lp + idp + indent.join(f"{shareLinkFromId(i)} RRIDCuration.byId('{i}')"
+        pid_text = lp + idp + indent.join(f"{shareLinkFromId(i)} Curation.byId('{i}')"
                                           for i in self.private_ids)
 
         string = (f'{pid_text}\n'
@@ -166,27 +479,17 @@ class PublicAnno(HypothesisHelper):  # TODO use this to generate the annotation 
         return super().__repr__(depth=depth, format__repr__for_children=string)
 
 
-class RRIDCuration(HypothesisHelper):
-    resolver = 'http://scicrunch.org/resolver/'
+class Curation(RRIDAnno):
     docs_link = 'https://scicrunch.org/resources/about/scibot'  # TODO update with explication of the tags
-    REPLY_TAG = 'RRIDCUR:Released'
-    #SKIP_DUPE_TAG = 'RRIDCUR:Duplicate-Released'  # sigh...
-    SUCCESS_TAG = 'RRIDCUR:Released'
-    INCOR_TAG = 'RRIDCUR:Incorrect' 
-    CORR_TAG = 'RRIDCUR:Corrected'
-    VAL_TAG = 'RRIDCUR:Validated'
-    skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
     skip_users = 'mpairish',
     h_curation = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
     h_staging = PublicAnno.h_staging
-    public_annos = {}  # for
     private_replies = {}  # in cases where a curator made the annotation
+    _annos = {}
     objects = {}
     identifiers = {}  # paper id: {uri:, doi:, pmid:}
     _rrids = {}
-    _papers = {}
     _xmllib = {}
-    _done_all = False
     maybe_bad = [
         'UPhsBq-DEeegjsdK6CuueQ',
         'UI4WWK95Eeea6a_iF0jHWg',
@@ -209,12 +512,11 @@ class RRIDCuration(HypothesisHelper):
         if self._done_loading:
             if self._done_all:
                 print('WARNING you ether have a duplicate annotation or your annotations are not sorted by updated.')
+            self._fetch_xmls(os.path.expanduser('~/ni/scibot/scibot_rrid_xml.pickle'))
                 #print(HypothesisHelper(anno, annos))
                 #embed()
                 #raise BaseException('WHY ARE YOU GETTING CALLED MULTIPLE TIMES?')
-            self._fetch_xmls(os.path.expanduser('~/ni/scibot/scibot_rrid_xml.pickle'))
-            self._do_papers()
-            self.__class__._done_all = True
+            #self._do_papers()
 
     @classmethod
     def _fetch_xmls(cls, file=None):
@@ -322,7 +624,7 @@ class RRIDCuration(HypothesisHelper):
     @property
     def duplicates(self):
         if self.isReleaseNode and self.rrid is not None:
-            return tuple(o for o in self.paper['rrids'][self.rrid]['objects'] if o is not self)
+            return tuple(o for o in self.paper[self.rrid] if o is not self)
         else:
             return tuple()
 
@@ -366,49 +668,6 @@ class RRIDCuration(HypothesisHelper):
             return self._xmllib[self.rrid]
 
     @property
-    def paper(self):
-        if self._done_loading:
-            return self._papers[self.uri]
-
-    @mproperty
-    def uri(self): return self._anno.uri
-
-    @mproperty
-    def target(self): return self._anno.target
-
-    @mproperty
-    def _Incorrect(self):
-        return self.INCOR_TAG in self._fixed_tags
-
-    @mproperty
-    def _InsufficientMetadata(self):
-        return 'RRIDCUR:InsufficientMetadata' in self._fixed_tags
-
-    @mproperty
-    def _Missing(self):
-        return 'RRIDCUR:Missing' in self._fixed_tags
-
-    @mproperty
-    def _NotRRID(self):
-        return 'RRIDCUR:NotRRID' in self._fixed_tags
-
-    @mproperty
-    def NotRRID(self):
-        return bool([r for r in self.replies if r._NotRRID]) or self._NotRRID
-
-    @mproperty
-    def _Unrecognized(self):
-        return 'RRIDCUR:Unrecognized' in self._fixed_tags
-
-    @mproperty
-    def _Validated(self):
-        return self.VAL_TAG in self._fixed_tags
-
-    @mproperty
-    def Validated(self):
-        return bool([r for r in self.replies if r._Validated]) or self._Validated
-
-    @property
     def alert(self):
         if not self.public_tags:
             return None
@@ -418,111 +677,6 @@ class RRIDCuration(HypothesisHelper):
             return 'Identifier corrected.'
         else:
             return None
-
-    @property
-    def _original_rrid(self):
-        # cannot call self.tags from here
-        # example of case where I need to check for RRIDCUR:Incorrect to make the right determination
-        "-3zMMjc7EeeTBfeviH2gHg"
-        #https://hyp.is/-3zMMjc7EeeTBfeviH2gHg/www.sciencedirect.com/science/article/pii/S0896627317303069
-
-        # TODO case where a curator highlights but there is no rrid but it is present in the reply
-
-        # TODO case where unresolved an no replies
-
-        maybe = [t for t in self._fixed_tags if t not in self.skip_tags and 'RRID:' in t]
-        if maybe:
-            if len(maybe) > 1:
-                if self.id:
-                    raise ValueError(f'More than one rrid in {maybe} \'{self.id}\' {self.shareLink}')
-            if self._InsufficientMetadata:
-                # RRIDCUR:InsufficientMetadata RRIDs have different semantics...
-                rrid = None
-            else:
-                rrid = maybe[0]
-        elif 'RRIDCUR:Unresolved' in self._tags:  # scibot is a good tagger, ok to use _tags ^_^
-            if not self.exact.startswith('RRID:'):
-                rrid = 'RRID:' + self.exact
-            else:
-                rrid = self.exact
-        elif ((self._Unrecognized or self._Validated) and
-              'RRID:' not in self._text and
-              self.exact):
-            if 'RRID:' in self.exact:
-                front, rest = self.exact.split('RRID:')
-                rest = rest.replace(' ', '')
-                rrid = 'RRID:' + rest  # yay for SCRRID:SCR_AAAAAAAHHHHH
-            elif self.exact.startswith('AB_') or self.exact.startswith('IMSR_JAX'):
-                rrid = 'RRID:' + self.exact.strip()
-            else:
-                rrid = None
-        elif self._anno.user != self.h_curation.username:
-            # special case for the old practice of putting the correct rrid in the text instead of the tags
-            if 'RRID:' in self._text:
-                try:
-                    junk, id_ = self._text.split('RRID:')
-                except ValueError as e:
-                    #print('too many RRIDs in text, skipping', self.shareLink, self._text)
-                    id_ = 'lol lol'
-                id_ = id_.strip()
-                if ' ' in id_:  # not going to think to hard on this one
-                    rrid = None
-                else:
-                    rrid = 'RRID:' + id_
-            elif self.exact and self._Incorrect and self.exact.startswith('AB_'):
-                rrid = 'RRID:' + self.exact
-            else:
-                rrid = None
-        else:
-            rrid = None
-
-        return rrid
-            
-    @property
-    def rrid(self):
-        rrid = self._original_rrid
-
-        # fix malformed RRIDs
-        if rrid is not None:
-            srrid = rrid.split('RRID:')
-            if len(srrid) > 2:
-                rrid = 'RRID:' + srrid[-1]
-
-        # output logic
-        reps = sorted([r for r in self.replies if r.rrid], key=lambda r: r._anno.updated)
-        rtags = [t for r in self.replies for t in r.tags]
-        if self._type == 'reply':
-            if reps:
-                return reps[0].rrid  # latest RRID tag gets precidence  # FIXME bad if the other chain more recent... need to propatage updated...
-            else:
-                return rrid
-        elif self._type == 'annotation':
-            if reps:
-                if len(reps) > 1:
-                    if len(set(r.rrid for r in reps)) == 1:
-                        #print(f'WARNING multiple replies with the same rrid in {reps}')
-                        pass  # too much
-                    else:
-                        raise ValueError(f'More than one rrid in {reps}')
-                rep = reps[0]
-                if self.CORR_TAG in rep.tags:
-                    return rep.rrid
-                elif rrid is None:
-                    return rep.rrid
-                elif self.INCOR_TAG in rep._fixed_tags:
-                    return None
-                elif (rrid is not None and
-                      rep.rrid is not None and
-                      rrid != rep.rrid):
-                    return rep.rrid
-            elif self.INCOR_TAG in rtags:
-                return None
-            return rrid
-
-    @property
-    def rridLink(self):
-        if self.rrid:
-            return self.resolver + self.rrid
 
     @mproperty
     def corrected(self):
@@ -547,12 +701,12 @@ class RRIDCuration(HypothesisHelper):
     @property
     def doi(self):
         if self._papers:
-            return self._papers[self.uri]['DOI']
+            return self._papers[self.uri].doi
 
     @property
     def pmid(self):
         if self._papers:
-            return self._papers[self.uri]['PMID']
+            return self._papers[self.uri].pmid
 
     @property
     def public_id(self):
@@ -657,29 +811,6 @@ class RRIDCuration(HypothesisHelper):
                     '</body></html>\n')
 
     @property
-    def _fixed_tags(self):
-        # fix bad tags using the annotation-* tags
-        if 'annotation-tags:replace' in self._tags:
-            return []  # these replies should be treated as invisible
-        if self.replies:  # TODO
-            tags = [t for t in self._tags]
-            for reply in self.replies:
-                if 'annotation-tags:replace' in reply._tags:
-                    tags = [t for t in reply._tags if t != 'annotation-tags:replace']
-        else:
-            tags = self._tags
-
-        fixes = {'RRIDCUR:InsufficientMetaData':'RRIDCUR:InsufficientMetadata'}
-        out_tags = []
-        for tag in tags:
-            if tag in bad_tags:
-                tag = tag.replace('RRID:', 'RRIDCUR:')
-            if tag in fixes:
-                tag = fixes[tag]
-            out_tags.append(tag)
-        return out_tags
-
-    @property
     def tags(self):
         tags = self._fixed_tags
         if self._type == 'reply':  # NOTE replies don't ever get put in public directly
@@ -768,8 +899,10 @@ class RRIDCuration(HypothesisHelper):
             #print('No RRID: will reset _public_anno after posting')
             return None
         else:
-            pa = self.paper['rrids'][self.rrid]['public_anno']
-            if pa is not None:
+            pa = PublicAnno.getByPaperRRID(self.uri, self.rrid)
+            if pa:
+                if len(pa) > 1:
+                    raise TypeError('')
                 return pa
 
     def _reset_public_anno(self):
@@ -787,11 +920,15 @@ class RRIDCuration(HypothesisHelper):
                     self._public_anno = anno
                 else:
                     self.paper['rrids'][self.rrid]['public_anno'] = anno
+                PublicAnno._annos.append(anno)
+                PublicAnno(anno, PublicAnno.annos)
                 self.public_annos[self._public_anno.id] = self._public_anno
-                return anno
+                return anno, pa
 
     def reply_private(self):  # let's keep things immutable
         response = self.h_curation.post_annotation(self.private_payload)
+        anno = get_annos.update_annos_from_api_response(response, self.annos)
+        return self.__class__(anno, self.annos)
 
     def patch_curation(self):  # XXX do not use unless you are really sure
         if self.public_id is not None:
@@ -863,7 +1000,7 @@ class RRIDCuration(HypothesisHelper):
                 f'\n{t}____________________')
 
 # repl convenience
-rrcu = RRIDCuration
+rrcu = Curation
 
 def disjoint(*sets):
     return not bool(set.intersection(*(set(s) for s in sets)))
@@ -874,8 +1011,8 @@ def covering(set_, *covers):
 def disjointCover(set_, *covers):
     return disjoint(*covers) and covering(set_, *covers)
 
-def sanity_and_stats(rc):
-    papers = rrcu._papers.values()
+def sanity_and_stats(rc, annos):
+    #papers = rrcu._papers.values()  # this is super slow now?
     rr = [r for r in rc if r.isReleaseNode]
     #with_rrid_good = [r for r in rr if ]
 
@@ -940,12 +1077,11 @@ def sanity_and_stats(rc):
     pannos = get_pannos()
     if not pannos:
         print('No public annos found.')
-        pannos = list(set(r.post_public() for r in tests))
+        pannos = [a for a in set(r.post_public() for r in tests) if a is not None]
     else:
         print('Found public annos.')
     pas = [PublicAnno(a, pannos) for a in pannos]
 
-    # posted = [r.post_public() for r in first_release]
     embed()
     return
 
@@ -972,17 +1108,17 @@ def sanity_and_stats(rc):
     ur_rep = [r for r in unresolved if r.replies and not (r.corrected or r.Validated)]  # XXX
 
     # report gen
-    report = report_gen(papers, unresolved)
+    report = report_gen(rrcu.papers.values(), unresolved)
     to_review_txt, to_review_html = to_review(unresolved)
 
     # specific examples for review
     trouble_children = [
-        RRIDCuration.byId('89qE6KlKEeeAoyf5DRv2SA'),  # both old and new rrid...
-        RRIDCuration.byId('KwZFvH4VEeeo4ffGDDoVXA'),  # incor val
-        RRIDCuration.byId('4EMeDplzEeepi6M5j1gMtw'),
-        RRIDCuration.byId('zjHIIB83EeehiXsJvha0ow'),  # should include
-        RRIDCuration.byId('UN4vkAUoEeeUEwvC870_Uw'),  # why is the nested reply not showing???!!?
-        #RRIDCuration.byId('VE23rgUoEeet9Zetzr9DJA'),  # corrected rrid not overriding
+        Curation.byId('89qE6KlKEeeAoyf5DRv2SA'),  # both old and new rrid...
+        Curation.byId('KwZFvH4VEeeo4ffGDDoVXA'),  # incor val
+        Curation.byId('4EMeDplzEeepi6M5j1gMtw'),
+        Curation.byId('zjHIIB83EeehiXsJvha0ow'),  # should include
+        Curation.byId('UN4vkAUoEeeUEwvC870_Uw'),  # why is the nested reply not showing???!!?
+        #Curation.byId('VE23rgUoEeet9Zetzr9DJA'),  # corrected rrid not overriding
     ]
 
     # # quality rankings
@@ -1181,7 +1317,7 @@ def main():
     #print('repr everything')
     #_ = [repr(r) for r in rc]  # exorcise the spirits  (this is the slow bit, joblib breaks...)
     try:
-        stats = sanity_and_stats(rc)
+        stats = sanity_and_stats(rc, annos)
     except AssertionError as e:
         print(e)
         embed()
