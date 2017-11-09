@@ -23,7 +23,7 @@ elif group.startswith('4'):
     memfile = '/tmp/test-scibot-annotations.pickle'
 
 get_annos = Memoizer(memfile, api_token, username, group)
-get_pannos = Memoizer(None, api_token, username, group_staging)
+get_pannos = Memoizer('/tmp/scibot-public-annos.pickle', api_token, username, group_staging)
 
 def getPMID(tags):
     # because sometime there is garbage in the annotations
@@ -847,9 +847,12 @@ class Curation(RRIDAnno):
             if payload:
                 response = self.h_staging.post_annotation(payload)
                 self._public_response = response
-                anno = HypothesisAnnotation(response.json())
-                pa = PublicAnno.addAnno(anno)
-                return anno, pa
+                if response.status_code == 200:
+                    anno = HypothesisAnnotation(response.json())
+                    pa = PublicAnno.addAnno(anno)
+                    return anno, pa
+                else:
+                    print(f'Failure to post on {self._python__repr__}')
 
     def reply_private(self):  # let's keep things immutable
         response = self.h_curation.post_annotation(self.private_payload)
@@ -1010,7 +1013,6 @@ def sanity_and_stats(rc, annos):
     else:
         print('Found public annos.')
         pas = [PublicAnno(a, pannos) for a in pannos]
-
 
     embed()
     return
