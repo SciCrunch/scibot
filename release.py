@@ -3,7 +3,9 @@
 import os
 import pickle
 import subprocess
+from datetime import datetime
 from urllib.parse import quote
+from collections import defaultdict
 import requests
 from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers
@@ -12,7 +14,8 @@ from export import api_token, username, group, group_staging, bad_tags, get_prop
 from rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
 
-if group_staging == '__world__':
+READ_ONLY = True
+if group_staging == '__world__' and not READ_ONLY:
     raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
 
 if group.startswith('5'):
@@ -22,7 +25,7 @@ elif group.startswith('4'):
     print('Test annos')
     memfile = '/tmp/test-scibot-annotations.pickle'
 
-get_annos = Memoizer(memfile, api_token, username, group)
+get_annos = Memoizer(memfile, api_token, username, group, 200000)
 get_pannos = Memoizer('/tmp/scibot-public-annos.pickle', api_token, username, group_staging)
 
 def getPMID(tags):
@@ -247,6 +250,12 @@ class RRIDAnno(HypothesisHelper):
             else:  # FIXME... this could fail...
                 self.__class__._papers.add(self)
             self.__class__._done_all = True
+
+    @mproperty
+    def created(self): return self._anno.created
+
+    @mproperty
+    def user(self): return self._anno.user
 
     @mproperty
     def uri(self): return self._anno.uri
@@ -476,19 +485,25 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
     def release__world__(self):
         print('This has not been implemented in api yet.')
         return None
-        r = self.h_staging.patch_annotation(self.id, self._release_payload)
-        self._release_record = r
-        return r
+        if READ_ONLY:
+            print('WARNING: READ_ONLY is set no action taken')
+        else:
+            r = self.h_staging.patch_annotation(self.id, self._release_payload)
+            self._release_record = r
+            return r
 
     def unrelease__world__(self):
         print('This has not been implemented in api yet.')
         return None
-        if hasattr(self, '_release_record') or self._anno.group == self.release_group:
-            payload = {'group':self.staging_group,
-                       'permissions':self._permissions}
-            r = self.h_staging.patch_annotation(self.id, payload)
-            self._unrelease_record = r
-            return r
+        if READ_ONLY:
+            print('WARNING: READ_ONLY is set no action taken')
+        else:
+            if hasattr(self, '_release_record') or self._anno.group == self.release_group:
+                payload = {'group':self.staging_group,
+                           'permissions':self._permissions}
+                r = self.h_staging.patch_annotation(self.id, payload)
+                self._unrelease_record = r
+                return r
 
     def __repr__(self, depth=0):
         start = '|' if depth else ''
@@ -509,7 +524,7 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
 class Curation(RRIDAnno):
     docs_link = 'https://scicrunch.org/resources/about/scibot'  # TODO update with explication of the tags
     skip_users = 'mpairish',
-    h_curation = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
+    h_curation = HypothesisUtils(username=username, token=api_token, group=group, max_results=200000)
     h_staging = PublicAnno.h_staging
     private_replies = {}  # in cases where a curator made the annotation
     _annos = {}
@@ -539,7 +554,7 @@ class Curation(RRIDAnno):
         if self._done_loading:
             if self._done_all:
                 print('WARNING you ether have a duplicate annotation or your annotations are not sorted by updated.')
-            self._fetch_xmls(os.path.expanduser('~/ni/scibot/scibot_rrid_xml.pickle'))
+            #self._fetch_xmls(os.path.expanduser('~/ni/dev/rrid/scibot/scibot_rrid_xml.pickle'))
                 #print(HypothesisHelper(anno, annos))
                 #embed()
                 #raise BaseException('WHY ARE YOU GETTING CALLED MULTIPLE TIMES?')
@@ -842,17 +857,20 @@ class Curation(RRIDAnno):
             return None
 
     def post_public(self):
-        if self._public_anno is None:  # dupes of others may go first
-            payload = self.public_payload  # XXX TODO
-            if payload:
-                response = self.h_staging.post_annotation(payload)
-                self._public_response = response
-                if response.status_code == 200:
-                    anno = HypothesisAnnotation(response.json())
-                    pa = PublicAnno.addAnno(anno)
-                    return anno, pa
-                else:
-                    print(f'Failure to post on {self._python__repr__}')
+        if READ_ONLY:
+            print('WARNING: READ_ONLY is set no action taken')
+        else:
+            if self._public_anno is None:  # dupes of others may go first
+                payload = self.public_payload  # XXX TODO
+                if payload:
+                    response = self.h_staging.post_annotation(payload)
+                    self._public_response = response
+                    if response.status_code == 200:
+                        anno = HypothesisAnnotation(response.json())
+                        pa = PublicAnno.addAnno(anno)
+                        return anno, pa
+                    else:
+                        print(f'Failure to post on {self._python__repr__}')
 
     def reply_private(self):  # let's keep things immutable
         response = self.h_curation.post_annotation(self.private_payload)
@@ -1217,6 +1235,96 @@ def review(*objects):
     for o in objects:
         os.system('google-chrome-unstable' + o.shareLink)
 
+def ianno(annos):
+    n_papers = len(Curation._papers)
+    total = [rrid for rrids in Curation._papers.values() for rrid in rrids.keys() if rrid is not None]
+    n_total = len(total)
+    unique = set(total)
+    n_unique = len(unique)
+
+    weird = Curation.byId('AVKzHMeEvTW_3w8LywL_')  # weirdness
+    with_replies = [c for c in Curation if c.replies]
+    with_curators = [c for c in Curation if c.curators]
+    wat = [c for c in Curation if c.curators and not c.replies]
+    watnd = [w for w in wat if not w.duplicates]
+    #wat = set(with_curators) - (set(Curation) - set(with_replies))  # why didn't this work?
+    n_public = len(list(PublicAnno))
+
+    s_t = len([a for a in annos if a.user == 'scibot'])
+    ca_t = len([a for a in annos if a.user != 'scibot' and not a.references])
+    cr_t = len([a for a in annos if a.user != 'scibot' and a.references])
+    n_cur = len(set(a.user for a in annos if a.user != 'scibot'))
+    by_cur = defaultdict(list)
+    #[by_cur[a.user].append(a) for a in annos]
+    for a in annos:
+        by_cur[a.user].append(a)
+    [print(k, len(v)) for k, v in sorted(by_cur.items(), key=lambda kv:len(kv[1]))]
+    c_bins = sorted((len(v) for v in by_cur.values()), reverse=True)[:10]
+    plt.bar(range(10), c_bins)
+    plt.title('Annotations by user (n = 22)')
+    plt.xlabel('Curator rank (top 10)')
+    plt.ylabel('Annotations + Replies')
+    plt.show()
+
+    dformat = '%Y-%m-%dT%H:%M:%S.%f+00:00'
+    def df(s):
+        return datetime.strptime(s, dformat)
+    time_data = {}
+    for id_, paper in Curation._papers.items():
+        updateds = []
+        s_u = []
+        c_u = defaultdict(list)
+        for rrid_annos in paper.values():
+            for anno in rrid_annos:
+                updateds.append(anno.created)
+                if anno.user == 'scibot':
+                    s_u.append(anno.created)
+                else:
+                    c_u[anno.user].append(anno.created)
+                for reply in anno.replies:
+                    updateds.append(reply.created)
+                    if anno.user == 'scibot':
+                        s_u.append(reply.created)
+                    else:
+                        c_u[reply.user].append(reply.created)
+
+        all_ = sorted(df(s) for s in updateds)
+        s = sorted(df(s) for s in s_u)
+        c = {k:sorted(df(s) for s in ss) for k, ss in c_u.items()}
+        range_all = all_[0], all_[-1]
+        if s:
+            range_s = s[0], s[-1]
+        else:
+            continue
+            range_s = None, None  # FIXME
+        if c:
+            range_c = tuple((max(ss) - min(ss), 0) for ss in c.values())
+            #range_c = c[0], c[-1]
+        else:
+            continue
+            range_c = None, None  # FIXME
+        time_data[id_] = range_all, range_s, range_c
+
+    delts = {k:tuple((e[1] - e[0]).total_seconds() / 60 if
+                     len(e) == 2 and e[0] is not None and e[1] is not None and type(e[0]) != tuple else
+                     [e_[0].total_seconds() / 60 for e_ in e] for e in v)
+             for k, v in time_data.items()}
+    t_bins_base = [e for v in delts.values() for e in v[-1] if e]
+    t_bins = [e for e in t_bins_base if e < 30 and e > .5]
+    t_big_bins = [e for e in t_bins_base if e >= 30]
+    import numpy as np
+    import pylab as plt
+    plt.hist(t_bins, 30)
+    plt.title(f'Curation time < 30 mins (n = {len(t_bins)} $\mu$ = {np.average(t_bins):.2f} med = {np.median(t_bins):.2f})')
+    plt.xlabel('Time (minutes)')
+    plt.ylabel('Number of curation sessions duration less than x')
+    plt.show()
+    plt.hist(t_big_bins, 20)
+    plt.title(f'Curation time > 30 mins (n = {len(t_big_bins)})')
+    plt.xlabel('Time (minutes)')
+    plt.ylabel('Number of curation sessions duration less than x')
+    plt.show()
+
 def main():
     from desc.prof import profile_me
 
@@ -1254,6 +1362,7 @@ def main():
     #_ = [repr(r) for r in rc]  # exorcise the spirits  (this is the slow bit, joblib breaks...)
     try:
         stats = sanity_and_stats(rc, annos)
+        ianno_stats = ianno(annos)
     except AssertionError as e:
         print(e)
         embed()

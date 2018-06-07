@@ -47,7 +47,7 @@ def fix_trailing_slash(annotated_urls):
                 annotated_urls[key].extend(annotated_urls.pop(new_key))
 
 def export_impl():
-    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
+    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=200000)
     params = {'group' : h.group }
     rows = h.search_all(params)
     annos = [HypothesisAnnotation(row) for row in rows]
@@ -167,7 +167,7 @@ def export_impl():
     return output_rows, DATE
 
 def export_json_impl():
-    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=100000)
+    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=200000)
     params = {'group' : h.group }
     rows = h.search_all(params)
     annos = [HypothesisAnnotation(row) for row in rows]
