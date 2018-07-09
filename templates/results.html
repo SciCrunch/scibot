@@ -1,0 +1,21 @@
+<doctype html>
+<head>
+    <title>Search Results:</title>
+</head>
+
+<h2>Search Results:</h2>
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    <ul class=flashes>
+    {% for message in messages %}
+      <li>{{ message }}</li>
+    {% endfor %}
+    </ul>
+  {% endif %}
+{% endwith %}
+
+<body>
+  {{results}}
+</body>
+
