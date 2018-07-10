@@ -16,7 +16,6 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 from IPython import embed
 from wtforms import Form, StringField, SelectField
- 
 bp = Blueprint('Search', __name__)
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
@@ -55,12 +54,37 @@ def route(route_name):
 def make_app(annos):
     app = Flask('scibot dashboard')
     hh = [Dashboard1(a, annos) for a in annos]
-
-    base_url = '/dashboard/'
-
-    @app.route('/dashboard')
+    hh.sort(key=lambda x: x.updated, reverse=True)
+    base_url = '/dashboard/'    
+    @app.route('/dashboard', methods=('GET', 'POST'))
     def route_base():
-        return 'hello world'
+        if request.method == 'POST':
+            if request.form['submit'] == 'Search':
+                return redirect('/dashboard/anno-search')
+            elif request.form['submit'] == 'List of Missing':
+                return redirect('/dashboard/anno-missing')
+            elif request.form['submit'] == 'List of Unresolved':
+                return redirect('/dashboard/anno-unresolved')
+            elif request.form['submit'] == 'List of Incorrect':
+                return redirect('/dashboard/anno-incorrect')
+            elif request.form['submit'] == 'Refresh Missing':
+                file = open("missing.txt", "w")
+                file.write("")
+                file.close()
+                return render_template('main.html')
+            elif request.form['submit'] == 'Refresh Unresolved':
+                file = open("unresolved.txt", "w")
+                file.write("")
+                file.close()
+                return render_template('main.html')
+            elif request.form['submit'] == 'Refresh Incorrect':
+                file = open("incorrect.txt", "w")
+                file.write("")
+                file.close()
+                return render_template('main.html')
+        else:
+            print ('reload')
+            return render_template('main.html')
 
     @app.route('/dashboard/anno-count')
     def route_anno_count():
@@ -78,6 +102,54 @@ def make_app(annos):
     def route_anno_zero_pretty():
         return repr(hh[0])
 
+    @app.route('/dashboard/anno-incorrect')
+    def route_anno_incorrect():
+        file = open("incorrect.txt","r")
+        incorrectStr = file.read()
+        file.close()
+        if incorrectStr == '':
+            h = 0
+            counter = 0
+            incorrectStr += str(counter) + ' Results:<br><br>'
+            print("PROSSESING")
+            for h in range(0, len(annos)):
+                if "RRIDCUR:Incorrect" in hh[h].tags and len(hh[h].tags) == 1:
+                    incorrectStr += '<br> Anno #:%s <br>' % h
+                    incorrectStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
+                    incorrectStr += repr(hh[h])
+                    counter += 1
+            incorrectStr = str(counter) + incorrectStr[1:]
+            file = open("incorrect.txt", "w")
+            file.write(incorrectStr)
+            file.close()
+            return (incorrectStr)
+        else:	
+            return incorrectStr
+
+    @app.route('/dashboard/anno-unresolved')
+    def route_anno_unresolved():
+        file = open("unresolved.txt","r")
+        unresolvedStr = file.read()
+        file.close()
+        if unresolvedStr == '':
+            h = 0
+            counter = 0
+            unresolvedStr += str(counter) + ' Results:<br><br>'
+            print("PROSSESING")
+            for h in range(0, len(annos)):
+                if "RRIDCUR:Unresolved" in hh[h].tags and len(hh[h].tags) == 1:
+                    unresolvedStr += '<br> Anno #:%s <br>' % h
+                    unresolvedStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
+                    unresolvedStr += repr(hh[h])
+                    counter += 1
+            unresolvedStr = str(counter) + unresolvedStr[1:]
+            file = open("unresolved.txt", "w")
+            file.write(unresolvedStr)
+            file.close()
+            return (unresolvedStr)
+        else:	
+            return unresolvedStr
+
     @app.route('/dashboard/results')
     def search_results(search):
         h = 0
@@ -94,38 +166,21 @@ def make_app(annos):
     #    else:
         if search.data['select'] == 'ID':
             for h in range(0, len(annos)):
-                if hh[h].id.startswith(search.data['search']):
+                if hh[h].id.find(search.data['search']) != -1:
                     hstr += '<br> Anno #:%s <br>' % h
-                    hstr += repr(hh[h])
-                    hlist.extend([h])
-                    counter += 1
-            for h in range(0, len(annos)):
-                if hh[h].id.find(search.data['search']) != -1 and not h in hlist:
-                    hstr += '<br> Anno #:%s <br>' % h
+                    hstr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
                     hstr += repr(hh[h])
                     counter += 1
             if hstr == '':
                 return('no results')
-            #return (str(counter) + ' Results:<br><br>' + hstr)
-            return render_template('results.html', results=html.unescape(hstr))
+            return (str(counter) + ' Results:<br><br>' + hstr)
+            #return render_template('results.html', results=html.unescape(hstr))
         elif search.data['select'] == 'Tags':
             for h in range(0, len(annos)):
-                if search.data['search'] in hh[h].tags:
+                if [t for t in hh[h].tags if search.data['search'] in t]:
                     hstr += '<br> Anno #:%s <br>' % h
+                    hstr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
                     hstr += repr(hh[h])
-                    hlist.extend([h])
-                    counter += 1
-            for h in range(0, len(annos)):
-                if [t for t in hh[h].tags if t.startswith(search.data['search'])] and not h in hlist:
-                    hstr += '<br> Anno #:%s <br>' % h
-                    hstr += repr(hh[h])
-                    hlist.extend([h])
-                    counter += 1
-            for h in range(0, len(annos)):
-                if [t for t in hh[h].tags if search.data['search'] in t] and not h in hlist:
-                    hstr += '<br> Anno #:%s <br>' % h
-                    hstr += repr(hh[h])
-                    hlist.extend([h])
                     counter += 1
             if hstr == '':
                 return('no results')
@@ -142,6 +197,31 @@ def make_app(annos):
         if request.method == 'POST':
             return search_results(search)
         return render_template('search.html', form=search)
+
+    @app.route('/dashboard/anno-missing', methods=('GET', 'POST'))
+    def route_anno_missing():
+        file = open("missing.txt","r")
+        missingStr = file.read()
+        file.close()
+        if missingStr == '':
+            h = 0
+            counter = 0
+            missingStr += str(counter) + ' Results:<br><br>'
+            print("PROSSESING")
+            for h in range(0, len(annos)):
+                if "RRIDCUR:Missing" in hh[h].tags and len(hh[h].tags) == 1:
+                    missingStr += '<br> Anno #:%s <br>' % h
+                    missingStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
+                    missingStr += repr(hh[h])
+                    counter += 1
+            missingStr = str(counter) + missingStr[1:]
+            file = open("missing.txt", "w")
+            file.write(missingStr)
+            file.close()
+            return (missingStr)
+        else:	
+            return missingStr
+    
 
     #new_function = route('/my/route')(route_base)
 
@@ -163,6 +243,7 @@ def search_text(text, annos, hh, search):
             
             if search.upper() in Data.upper():
                 hstr += '<br> Anno #:%s <br>' % h
+                hstr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
                 hstr += repr(hh[h])
                 hlist.extend([h])
                 counter += 1

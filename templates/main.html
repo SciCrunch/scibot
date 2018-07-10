@@ -1,0 +1,30 @@
+<doctype html>
+<head>
+    <title>Database</title>
+</head>
+
+<h2>Database</h2>
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    <ul class=flashes>
+    {% for message in messages %}
+      <li>{{ message }}</li>
+    {% endfor %}
+    </ul>
+  {% endif %}
+{% endwith %}
+
+<form method=POST>
+<input type="submit" name="submit" value=Search>
+<br>
+<br>
+<input type="submit" name="submit" value="List of Missing">
+<input type="submit" name="submit" value="List of Unresolved">
+<input type="submit" name="submit" value="List of Incorrect">
+<br>
+<br>
+<input type="submit" name="submit" value="Refresh Missing">
+<input type="submit" name="submit" value="Refresh Unresolved">
+<input type="submit" name="submit" value="Refresh Incorrect">
+</form>
