@@ -53,8 +53,10 @@ def route(route_name):
 
 def make_app(annos):
     app = Flask('scibot dashboard')
-    hh = [Dashboard1(a, annos) for a in annos]
-    hh.sort(key=lambda x: x.updated, reverse=True)
+    #hh = hh[0:80000]
+    Annos = annos
+    Annos.sort(key=lambda x: x.updated, reverse=True)
+    hh = [Dashboard1(a, Annos) for a in Annos]
     base_url = '/dashboard/'    
     @app.route('/dashboard', methods=('GET', 'POST'))
     def route_base():
@@ -77,30 +79,146 @@ def make_app(annos):
                 file.write("")
                 file.close()
                 return render_template('main.html')
+            elif request.form['submit'] == 'Refresh Paper List':
+                file = open("papers.txt", "w")
+                file.write("")
+                file.close()
+                return render_template('main.html')
             elif request.form['submit'] == 'Refresh Incorrect':
                 file = open("incorrect.txt", "w")
                 file.write("")
                 file.close()
                 return render_template('main.html')
+            elif request.form['submit'] == 'Refresh No PMID List':
+                file = open("no-pmid.txt", "w")
+                file.write("")
+                file.close()
+                return render_template('main.html')
+            elif request.form['submit'] == 'Paper List':
+                return redirect('/dashboard/paper-list')
+            elif request.form['submit'] == 'Papers with no PMID':
+                return redirect('/dashboard/no-pmid')
         else:
-            print ('reload')
             return render_template('main.html')
 
     @app.route('/dashboard/anno-count')
     def route_anno_count():
-        return str(len(annos))
+        return str(len(Annos))
 
     #@app.route(PurePath(base_url, 'anno-tags').as_posix())
     @app.route('/dashboard/anno-user/<user>')
     def route_anno_tags(user):
         print(user)
-        out = '\n'.join([f'{anno.user} {anno.text} {anno.tags}<br>' for anno in annos if anno.user == user])
+        out = '\n'.join([f'{anno.user} {anno.text} {anno.tags}<br>' for anno in Annos if anno.user == user])
         #embed()
         return out
 
     @app.route('/dashboard/anno-zero-pretty')
     def route_anno_zero_pretty():
         return repr(hh[0])
+
+    @app.route('/dashboard/no-pmid')
+    def route_no_PMID():
+        file = open("no-pmid.txt","r")
+        paperStr = file.read()
+        file.close()
+        if paperStr == '':
+            h = 0
+            URLList = []
+            counter = 0
+            paperStr = str(counter) + ' Results:<br><br>'
+            print("PROSSESING")
+            for h in range(0, len(hh)):
+                if [t for t in hh[h].tags if t.startswith("PMID")]:
+                    URL = BaseURL(Annos[h])
+                    if not URL in URLList:
+                        URLList.append(URL)
+            for h in range(0, len(hh)):
+                URL = BaseURL(Annos[h])
+                if not URL in URLList:
+                    paperStr += '<br> Anno #:%s <br>' % h
+                    paperStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
+                    paperStr += repr(hh[h])
+                    paperStr += "<br>" + URL
+                    counter += 1
+                    URLList.append(URL)
+            paperStr = str(counter) + paperStr[1:]
+            file = open("no-pmid.txt", "w")
+            file.write(paperStr)
+            file.close()
+        return (paperStr)
+
+    @app.route('/dashboard/paper-list')
+    def route_Paper_List():
+        file = open("papers.txt","r")
+        paperStr = file.read()
+        file.close()
+        if paperStr == '':
+            h = 0
+            PMIDList = []
+            DOIList = []
+            URLList = []
+            URLList.append('curation.scicrunch.com/paper/2')
+            URLList.append('curation.scicrunch.com/paper/1')
+            URLList.append('scicrunch.org/resources')
+            counter = 0
+            ProbCounter = 0
+            paperStr += str(counter) + ' Results:<br>' + str(ProbCounter) + ' Papers with no PMID or DOI<br><br>'
+            print("PROSSESING")
+            for h in range(0, len(hh)):
+                if [t for t in hh[h].tags if t.startswith("DOI")]:
+                    DOI = str([t for t in hh[h].tags if t.startswith("DOI")]).replace("DOI:", "")
+                    URL = BaseURL(Annos[h])
+                    if not DOI in DOIList and not URL in URLList:
+                        paperStr += '<br> Anno #:%s <br>' % h
+                        paperStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
+                        paperStr += repr(hh[h])
+                        paperStr += URL
+                        counter += 1
+                        if not DOI == '':
+                            DOIList.append(DOI)
+                        URLList.append(URL)
+                    elif not DOI in DOIList:
+                        if not DOI == '':
+                            DOIList.append(DOI)
+                    elif not URL in URLList:
+                        URLList.append(URL)
+                if [t for t in hh[h].tags if t.startswith("PMID")]:
+                    PMID = str([t for t in hh[h].tags if t.startswith("PMID")]).replace('PMID:', '')
+                    URL = BaseURL(Annos[h])
+                    if not PMID in PMIDList and not URL in URLList:
+                        paperStr += '<br> Anno #:%s <br>' % h
+                        paperStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
+                        paperStr += repr(hh[h])
+                        paperStr += URL
+                        counter += 1
+                        if not PMID == '':
+                            PMIDList.append(PMID)
+                        URLList.append(URL)
+                    elif not PMID in PMIDList:
+                        if not PMID == '':
+                            PMIDList.append(PMID)
+                    elif not URL in URLList:
+                        URLList.append(URL)
+            print (str(counter))
+            for h in range(0, len(hh)):
+                URL = BaseURL(Annos[h])
+                if not URL in URLList:
+                    paperStr += '<br> Anno #:%s <br>' % h
+                    paperStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
+                    paperStr += '<span	style="color:red">NO PMID OR DOI</span><br>'
+                    paperStr += repr(hh[h])
+                    paperStr += URL
+                    counter += 1
+                    ProbCounter += 1
+                    URLList.append(URL)
+            paperStr = str(counter) + paperStr[1:14] + str(ProbCounter) + paperStr[15:]
+            file = open("papers.txt", "w")
+            file.write(paperStr)
+            file.close()
+            return (paperStr)
+        else:	
+            return paperStr
 
     @app.route('/dashboard/anno-incorrect')
     def route_anno_incorrect():
@@ -112,7 +230,7 @@ def make_app(annos):
             counter = 0
             incorrectStr += str(counter) + ' Results:<br><br>'
             print("PROSSESING")
-            for h in range(0, len(annos)):
+            for h in range(0, len(hh)):
                 if "RRIDCUR:Incorrect" in hh[h].tags and len(hh[h].tags) == 1:
                     incorrectStr += '<br> Anno #:%s <br>' % h
                     incorrectStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
@@ -136,7 +254,7 @@ def make_app(annos):
             counter = 0
             unresolvedStr += str(counter) + ' Results:<br><br>'
             print("PROSSESING")
-            for h in range(0, len(annos)):
+            for h in range(0, len(hh)):
                 if "RRIDCUR:Unresolved" in hh[h].tags and len(hh[h].tags) == 1:
                     unresolvedStr += '<br> Anno #:%s <br>' % h
                     unresolvedStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
@@ -159,14 +277,14 @@ def make_app(annos):
     #    if search.data['search'] == '':
     #        h = 0
     #        hstr = ''
-    #        for h in range(0, len(annos)):
+    #        for h in range(0, len(hh)):
     #            hstr += repr(hh[h])
     #            h += 1
     #        return(hstr)
     #    else:
         if search.data['select'] == 'ID':
-            for h in range(0, len(annos)):
-                if hh[h].id.find(search.data['search']) != -1:
+            for h in range(0, len(hh)):
+                if search.data['search'] in hh[h].id:
                     hstr += '<br> Anno #:%s <br>' % h
                     hstr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
                     hstr += repr(hh[h])
@@ -176,7 +294,7 @@ def make_app(annos):
             return (str(counter) + ' Results:<br><br>' + hstr)
             #return render_template('results.html', results=html.unescape(hstr))
         elif search.data['select'] == 'Tags':
-            for h in range(0, len(annos)):
+            for h in range(0, len(hh)):
                 if [t for t in hh[h].tags if search.data['search'] in t]:
                     hstr += '<br> Anno #:%s <br>' % h
                     hstr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
@@ -185,11 +303,21 @@ def make_app(annos):
             if hstr == '':
                 return('no results')
             print (str(len(hlist)))
-            print (len(annos))
+            print (len(hh))
             return (str(counter) + ' Results:<br><br>' + hstr)
             #return render_template('results.html', results=hstr)
+        elif search.data['select'] == 'User':
+            for h in range(0, len(hh)):
+                if Annos[h].user == search.data['search']:
+                    hstr += '<br> Anno #:%s <br>' % h
+                    hstr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
+                    hstr += repr(hh[h])
+                    counter += 1
+            if hstr == '':
+                return('no results')
+            return (str(counter) + ' Results:<br><br>' + hstr)
         else:
-            return search_text(search.data['select'], annos, hh, search.data['search'])
+            return search_text(search.data['select'], Annos, hh, search.data['search'])
 
     @app.route('/dashboard/anno-search', methods=('GET', 'POST'))
     def route_anno_search():
@@ -208,7 +336,7 @@ def make_app(annos):
             counter = 0
             missingStr += str(counter) + ' Results:<br><br>'
             print("PROSSESING")
-            for h in range(0, len(annos)):
+            for h in range(0, len(hh)):
                 if "RRIDCUR:Missing" in hh[h].tags and len(hh[h].tags) == 1:
                     missingStr += '<br> Anno #:%s <br>' % h
                     missingStr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
@@ -233,7 +361,7 @@ def search_text(text, annos, hh, search):
         hlist = []
         hstr = ''
         counter = 0
-        for h in range(0, len(annos)):
+        for h in range(0, len(hh)):
             hsplit = hh[h].text.split('<p>',hh[h].text.count('<p>'))
             t = 0
             Data = ''
@@ -245,11 +373,14 @@ def search_text(text, annos, hh, search):
                 hstr += '<br> Anno #:%s <br>' % h
                 hstr += '<a href=' + hh[h].shareLink + '> Anno Link </a><br>'
                 hstr += repr(hh[h])
-                hlist.extend([h])
+                hstr += "<br>" + annos[h].uri
                 counter += 1
         if hstr == '':
             return('no results')
         return (str(counter) + ' Results:<br><br>' + hstr)
+
+def BaseURL(anno):
+    return anno.uri.replace(".long", "").replace("/abstract", "").replace("/full","").replace(".short", "").replace(".full", "").replace("http://","").replace("https://","").replace("/FullText","").replace("/Abstract","").replace("/enhanced","")
 
 def main():
     annos = get_annos()

@@ -10,6 +10,7 @@ class SearchForm(Form):
                ('Clonality','Clonality'),
                ('Target Antigen','Target Antigen'),
                ('Vendor','Vendor'),
-               ('Category','Category')]
+               ('Category','Category'),
+               ('User','User')]
     select = SelectField('Search for annotations:', choices=choices)
     search = StringField('')
