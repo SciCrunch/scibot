@@ -218,6 +218,16 @@ class Papers(KeyAccessor):
     object_container_class = RRIDs
 
 
+class SameDOI(KeyAccessor):
+    prop = 'doi'
+    object_container_class = Papers
+
+
+class SamePMID(KeyAccessor):
+    prop = 'pmid'
+    object_container_class = Papers
+
+
 class PublicParagraphTags:
     Alert = 'alert'
     CuratorNote = 'curator-note'
