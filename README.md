@@ -36,6 +36,7 @@ The found RRIDs are logged to timestamped files, along with the text and html of
 2. `sudo alternatives --set python /usr/bin/python3.4`
 3. `sudo pip install requests pyramid lxml gevent gunicorn`
 4. clone this repository
+5. `export PYTHONPATH=${directory_into_which_you_cloned_scibot}` (can also be set in `.bashrc` or `.bash_profile`)
 6. `export RRIDBOT_USERNAME=someusername`
 7. `export RRIDBOT_GROUP=somegroupname`
 8. `unset HISTFILE`
