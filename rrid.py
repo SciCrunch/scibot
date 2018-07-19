@@ -23,7 +23,7 @@ from lxml import etree
 from curio import Channel, run
 from pyramid.response import Response
 from hyputils.hypothesis import HypothesisUtils
-from export import export_impl, export_json_impl
+from scibot.export import export_impl, export_json_impl
 from IPython import embed
 from bs4 import BeautifulSoup
 

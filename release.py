@@ -10,8 +10,8 @@ import requests
 from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
-from export import api_token, username, group, group_staging, bad_tags, get_proper_citation
-from rrid import getDoi, get_pmid, annotate_doi_pmid
+from scibot.export import api_token, username, group, group_staging, bad_tags, get_proper_citation
+from scibot.rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
 
 READ_ONLY = True
