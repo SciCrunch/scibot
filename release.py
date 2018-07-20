@@ -562,7 +562,7 @@ class Curation(RRIDAnno):
     def __init__(self, anno, annos):
         super().__init__(anno, annos)
         if self._done_loading:
-            if self._done_all:
+            if not self._done_all:  # pretty sure this is obsolete?
                 print('WARNING you ether have a duplicate annotation or your annotations are not sorted by updated.')
             #self._fetch_xmls(os.path.expanduser('~/ni/dev/rrid/scibot/scibot_rrid_xml.pickle'))
                 #print(HypothesisHelper(anno, annos))
@@ -1191,7 +1191,7 @@ def clean_dupes(get_annos, repr_issues=False):
         for a in anns[:-1]:  # all but latest
             annos.remove(a)
     deduped = [a for a in annos if a.id in dupes]
-    assert len(preunduped) // len(dupes) == 2, 'Somehow you have managed to get more than 1 duplicate!'
+    assert not len(dupes) or len(preunduped) // len(dupes) == 2, 'Somehow you have managed to get more than 1 duplicate!'
     # get_annos.memoize_annos(annos)
     embed()
 
@@ -1270,6 +1270,7 @@ def ianno(annos):
         by_cur[a.user].append(a)
     [print(k, len(v)) for k, v in sorted(by_cur.items(), key=lambda kv:len(kv[1]))]
     c_bins = sorted((len(v) for v in by_cur.values()), reverse=True)[:10]
+    import pylab as plt
     plt.bar(range(10), c_bins)
     plt.title('Annotations by user (n = 22)')
     plt.xlabel('Curator rank (top 10)')
@@ -1323,7 +1324,6 @@ def ianno(annos):
     t_bins = [e for e in t_bins_base if e < 30 and e > .5]
     t_big_bins = [e for e in t_bins_base if e >= 30]
     import numpy as np
-    import pylab as plt
     plt.hist(t_bins, 30)
     plt.title(f'Curation time < 30 mins (n = {len(t_bins)} $\mu$ = {np.average(t_bins):.2f} med = {np.median(t_bins):.2f})')
     plt.xlabel('Time (minutes)')
