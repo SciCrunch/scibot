@@ -4,10 +4,12 @@ import os
 import pickle
 import subprocess
 import html
-print ("importing....")
 from pathlib import PurePath
 from os import environ
 from forms import SearchForm
+from scibot.release import Curation
+from hyputils.subscribe import preFilter, AnnotationStream
+from hyputils.handlers import helperSyncHandler, filterHandler
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from flask import Flask
 from flask import (
@@ -36,8 +38,6 @@ elif group.startswith('4'):
     print('Test annos')
     memfile = '/tmp/test-scibot-annotations.pickle'
 
-get_annos = Memoizer(memfile, api_token, username, group, 200000)
-
 class Dashboard1(HypothesisHelper):
     def __repr__(self, depth=0):
         out = super().__repr__(depth=depth)
@@ -54,9 +54,10 @@ def route(route_name):
 def make_app(annos):
     app = Flask('scibot dashboard')
     #hh = hh[0:80000]
-    Annos = annos
-    Annos.sort(key=lambda x: x.updated, reverse=True)
-    hh = [Dashboard1(a, Annos) for a in Annos]
+    Annos = []
+    for a in range(0, len(annos)):
+        Annos.append(annos[a])
+    hh = [Dashboard1(a, annos) for a in annos]
     base_url = '/dashboard/'
     k = 0
     kList = []
@@ -150,7 +151,6 @@ def make_app(annos):
 
     @app.route('/dashboard/refresh')
     def route_refresh():
-        annos = get_annos()
         return redirect('/dashboard')
 
     @app.route('/dashboard/Journals')
@@ -270,6 +270,28 @@ def make_app(annos):
 <style type="text/css">
   td {width: 300px; hight 40px}     
   td {border: 1px solid #000000;}
+  a.class1:link {
+    background-color: #009cdb;
+    color: white;
+    padding: 14px 25px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+}
+  a.class2:visited, a.class2:link{
+    background-color: #fcff56;
+    color: black;
+    padding: 14px 25px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+}
+  a.class1:visited {
+    background-color: #db4500;
+    color: white;
+}
+
+  a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
 </style>
 <table cellpadding = 3 cellspacing = 0>
 <tr>
@@ -289,10 +311,6 @@ def make_app(annos):
             URLList.append('curation.scicrunch.com/paper/2')
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
-            for a in range(0, len(hh)):
-                URL = BaseURL(Annos[a])
-                if URLDict[URL] < 3:
-                    PMIDDict[URL] = "<a href=https://www.ncbi.nlm.nih.gov/pubmed/> PubMed </a>"
             print("PROSSESING")
             for h in range(0, len(hh)):
                 if [t for t in hh[h].tags if t.startswith("DOI")]:
@@ -314,24 +332,25 @@ def make_app(annos):
                                 PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
                     else:
                         PMIDDict[URL] = PMID
+            print(str(len(hh)))
             for h in range(0, len(hh)):
                 URL = BaseURL(Annos[h])
                 if URL in PMIDDict.keys():
                     PMID = PMIDDict[URL]
                 elif not URL in URLList:
                     counter += 1
-                    PMID = "<a href=https://www.ncbi.nlm.nih.gov/pubmed/> PubMed </a>"
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>NO PMID</td><td>"+ PMID +"</td><td><a href=" + Annos[h].uri + "> Paper Link </a></td><td>"+Annos[h].user+"</td><td>""</td></tr>"
+                    PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/ class="class2"> PubMed </a>'
+                    returnStr += "<tr><td>"+str(counter)+"</td><td>NO PMID</td><td>"+ PMID +"</td><td><a href=" + Annos[h].uri + ' class="class1"> Paper Link </a></td><td>'+Annos[h].user+"</td><td>""</td></tr>"
                     URLList.append(URL)
                 if [t for t in hh[h].tags if "Missing" in t and not "NoFurtherAction" in t and len(hh[h].tags) == 1]:
                     counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>MISSING</td><td>"+ PMID +"</td><td><a href=" + hh[h].shareLink + "> Anno Link </a></td><td>"+Annos[h].user+"</td><td>"+hh[h].text+"</td></tr>"
+                    returnStr += "<tr><td>"+str(counter)+"</td><td>MISSING</td><td>"+ PMID +"</td><td><a href=" + hh[h].shareLink + ' class="class1"> Anno Link </a></td><td>'+Annos[h].user+"</td><td>"+hh[h].text+"</td></tr>"
                 if [t for t in hh[h].tags if "Incorrect" in t and not "NoFurtherAction" in t and len(hh[h].tags) == 1]:
                     counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>INCORRECT</td><td>"+ PMID +"</td><td><a href=" + hh[h].shareLink + "> Anno Link </a></td><td>"+Annos[h].user+"</td><td>"+hh[h].text+"</td></tr>"
+                    returnStr += "<tr><td>"+str(counter)+"</td><td>INCORRECT</td><td>"+ PMID +"</td><td><a href=" + hh[h].shareLink + ' class="class1"> Anno Link </a></td><td>'+Annos[h].user+"</td><td>"+hh[h].text+"</td></tr>"
                 if [t for t in hh[h].tags if "Unresolved" in t and not "NoFurtherAction" in t and len(hh[h].tags) == 1]:
                     counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>UNRESOLVED</td><td>"+ PMID +"</td><td><a href=" + hh[h].shareLink + "> Anno Link </a></td><td>"+Annos[h].user+"</td><td>"+hh[h].text+"</td></tr>"
+                    returnStr += "<tr><td>"+str(counter)+"</td><td>UNRESOLVED</td><td>"+ PMID +"</td><td><a href=" + hh[h].shareLink + ' class="class1"> Anno Link </a></td><td>'+Annos[h].user+"</td><td>"+hh[h].text+"</td></tr>"
             returnStr += "</table></html>"
             returnStr = str(counter) + returnStr[1:]
             file = open("table.txt", "w")
@@ -345,9 +364,37 @@ def make_app(annos):
         file.close()
         if annoStr == '':
             h = 0
+            URLList = []
+            URLsUsed = []
+            DOIDict = {}
+            URLwDOI = {}
+            PMIDDict = {}
             counter = 0
+            URLList.append('curation.scicrunch.com/paper/2')
+            URLList.append('curation.scicrunch.com/paper/1')
+            URLList.append('scicrunch.org/resources')
             annoStr += str(counter) + ' Results:<br>'
             print("PROSSESING")
+            for h in range(0, len(hh)):
+                if [t for t in hh[h].tags if t.startswith("DOI")]:
+                    URL = BaseURL(Annos[h])
+                    if not URL in URLsUsed:
+                        DOI = str([t for t in hh[h].tags if t.startswith("DOI")]).replace("DOI:", "")
+                        if not DOI in DOIDict.keys():
+                            DOIDict[DOI] = []
+                        DOIDict[DOI].append(URL)
+                        URLwDOI[URL] = DOI
+                        URLsUsed.append(URL)
+            for h in range(0, len(hh)):
+                k = 0
+                URL = BaseURL(Annos[h])
+                if [t for t in hh[h].tags if t.startswith("PMID")]:
+                    PMID = str([t for t in hh[h].tags if t.startswith("PMID")]).replace("PMID:", "")
+                    if URL in URLsUsed:
+                        for k in range(0, len(DOIDict[URLwDOI[URL]])):
+                            URLList.append(DOIDict[URLwDOI[URL]][k])
+                    else:
+                        URLList.append(URL)
             for a in range(0, len(URLDict)):
                 if URLDict[BaseURL(Annos[kList[a]])] < 3:
                     annoStr += '<br> Anno #:%s <br>' % kList[a]
@@ -618,8 +665,25 @@ def Journal(anno):
     URL = SplitURL[0]
     return URL
 
-def main():
+def annoSync(memoization_file='/tmp/protc-annotations.pickle', helpers=tuple()):
+    if group == '__world__':
+        raise ValueError('Group is set to __world__ please run the usual `export HYP_ ...` command.')
+    get_annos = Memoizer(memoization_file=memoization_file)
+    yield get_annos
+    prefilter = preFilter(groups=[group]).export()
+    helperSyncHandler.memoizer = get_annos
+    helperSyncHandler.helpers = helpers
     annos = get_annos()
+    yield annos
+    stream_loop = AnnotationStream(annos, prefilter, helperSyncHandler)()
+    yield stream_loop
+
+def main():
+    get_annos, annos, stream_loop = annoSync(memfile, [Curation])
+    stream_loop.start()
+    #embed()
+    #get_annos = Memoizer(memfile, api_token, username, group, 200000)
+    #annos = get_annos()
     app = make_app(annos)
     app.secret_key = 'super secret key'
     app.config['SESSION_TYPE'] = 'filesystem'
