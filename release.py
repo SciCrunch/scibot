@@ -743,7 +743,7 @@ class Curation(RRIDAnno):
             curator_text = f'<p id="{p.Curators}">Curator: {curators}</p>\n' if self.curators else ''
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             n2t_link = f'http://n2t.net/{self.rrid}'
-            idents_link = f'http://identifiers.org/rrid/{self.rrid}'
+            idents_link = f'http://identifiers.org/{self.rrid}'
             links = (f'<p>Resource used:</p>\n'
                      f'<p id="{p.Citation}">\n'
                      f'{self.proper_citation}\n'
