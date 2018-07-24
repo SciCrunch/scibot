@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.6
-""" RRID export round 2
+"""rridxp: export and crunch RRID data
 
 Usage:
     rridxp csv [options] [<filter>...]
@@ -7,7 +7,7 @@ Usage:
 
 Examples:
     rridxp csv
-    rridxp csv IMSR FILTER
+    rridxp csv MGI IMSR
 
 Options:
     -h --help       show this
