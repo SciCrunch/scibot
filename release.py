@@ -228,6 +228,40 @@ class SamePMID(KeyAccessor):
     object_container_class = Papers
 
 
+class MultiplePMID(KeyAccessor):
+    prop = 'doi'
+    object_container_class = SamePMID
+
+
+class MultipleDOI(KeyAccessor):
+    prop = 'pmid'
+    object_container_class = SameDOI
+
+
+class RRIDSimple(KeyAccessor):
+    prop = 'rrid'
+    object_container_class = set
+
+class PMIDRRIDs(KeyAccessor):
+    prop = 'pmid'
+    object_container_class = RRIDSimple
+
+
+class DOIRRIDs(KeyAccessor):
+    prop = 'doi'
+    object_container_class = RRIDSimple
+
+
+class MPP(KeyAccessor):
+    prop = 'uri'
+    object_container_class = PMIDRRIDs
+
+
+class MPD(KeyAccessor):
+    prop = 'uri'
+    object_container_class = DOIRRIDs
+
+
 class PublicParagraphTags:
     Alert = 'alert'
     CuratorNote = 'curator-note'
