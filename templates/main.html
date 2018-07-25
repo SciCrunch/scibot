@@ -1,72 +1,53 @@
-<doctype html>
-<head>
-    <title>Database</title>
-</head>
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+    <head>
+        <title>SciBot Curation Dashboard</title>
+        <link href={{ url_for('route_css_table_style') }} rel="stylesheet">
+    </head>
 
-<h2>Database</h2>
+    <body>
+        <h2>SciBot Curation Dashboard</h2>
 
-{% with messages = get_flashed_messages() %}
-  {% if messages %}
-    <ul class=flashes>
-    {% for message in messages %}
-      <li>{{ message }}</li>
-    {% endfor %}
-    </ul>
-  {% endif %}
-{% endwith %}
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <ul class=flashes>
+            {% for message in messages %}
+            <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% endwith %}
 
-<form method=POST>
-<input type="submit" name="submit" value=Search>
-<br>
-<input type="submit" name="submit" value="Refresh All">
-<table align="center" cellspacing="20">
-<tr>
-<td>
-<input type="submit" name="submit" value="List of Missing">
-</td>
-<td>
-<input type="submit" name="submit" value="List of Unresolved">
-</td>
-<td>
-<input type="submit" name="submit" value="List of Incorrect">
-</td>
-<td>
-<input type="submit" name="submit" value="Paper List">
-</td>
-<td>
-<input type="submit" name="submit" value="Papers with no PMID">
-</td>
-<td>
-<input type="submit" name="submit" value="Papers with no Annos">
-</td>
-<td>
-<input type="submit" name="submit" value="All Problems">
-</td>
-</tr>
-<br>
-<br>
-<tr>
-<td>
-<input type="submit" name="submit" value="Refresh Missing">
-</td>
-<td>
-<input type="submit" name="submit" value="Refresh Unresolved">
-</td>
-<td>
-<input type="submit" name="submit" value="Refresh Incorrect">
-</td>
-<td>
-<input type="submit" name="submit" value="Refresh Paper List">
-</td>
-<td>
-<input type="submit" name="submit" value="Refresh No PMID List">
-</td>
-<td>
-<input type="submit" name="submit" value="Refresh No Annos">
-</td>
-<td>
-<input type="submit" name="submit" value="Refresh Problems">
-</td>
-</tr>
-</table>
-</form>
+        <a href={{ url_for('route_anno_search') }}>Search</a>
+        <form method=POST>
+            <br>
+            <input type="submit" name="submit" value="Refresh All">
+        </form>
+        <table align="center" cellspacing="20">
+            <tr>
+                <td>
+                    <a href={{ url_for('route_anno_missing') }}>List of Missing</a>
+                </td>
+                <td>
+                    <a href={{ url_for('route_anno_unresolved') }}>List of Unresolved</a>
+                </td>
+                <td>
+                    <a href={{ url_for('route_anno_incorrect') }}>List of Incorrect</a>
+                </td>
+                <td>
+                    <a href={{ url_for('route_Paper_List') }}>Paper List</a>
+                </td>
+                <td>
+                    <a href={{ url_for('route_no_PMID') }}>Papers with no PMID</a>
+                </td>
+                <td>
+                    <a href={{ url_for('route_No_Annos') }}>Papers with no Annos</a>
+                </td>
+                <td>
+                    <a href={{ url_for('route_table') }}>All Problems</a>
+                </td>
+            </tr>
+        </table>
+
+    </body>
+</html>

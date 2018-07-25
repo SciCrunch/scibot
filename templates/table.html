@@ -1,15 +1,18 @@
-<doctype html>
-<style type="text/css">
-  td {width: 300px; hight 40px} 
-  td {border: 1px solid #000000;}
-</style>
-<table cellpadding = 3 cellspacing = 0>
-<tr>
-  <td>Problem</th>
-  <td>PMID</th>
-  <td>Link</th>
-  <td>Annotated By</th>
-  <td>Notes</th>
-</tr>
-{{returnStr}}
-</table>
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+    <head>
+        <link href={{ url_for('route_css_table_style') }} rel="stylesheet">
+    </head>
+    <body>
+        <table cellpadding = 3 cellspacing = 0>
+            <tr>
+                <td>Problem</td>
+                <td>PMID</td>
+                <td>Link</td>
+                <td>Annotated By</td>
+                <td>Notes</td>
+            </tr>
+            {{returnStr}}
+        </table>
+    </body>
+</html>
