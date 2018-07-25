@@ -60,6 +60,10 @@ def make_app(annos):
     hh.reverse()
     Annos.reverse()
     base_url = '/dashboard/'
+    names = ['missing', 'incorrect', 'papers', 'unresolved', 'no-pmid', 'no-annos', 'table', 'Journals']
+    for name in names:
+        with open(f'{name}.txt','wt') as f:
+            f.write('')
     k = 0
     kList = []
     URLDict = {}
