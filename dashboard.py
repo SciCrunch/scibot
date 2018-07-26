@@ -81,8 +81,12 @@ def make_app(annos, pannos=[]):
                      tag_string(c),
                      atag(PMID(c.pmid), c.pmid, new_tab=True)
                      if c.pmid
-                     else (atag(DOI(c.doi), c.doi, new_tab=True) if c.doi else ''),
-                     atag(c.shareLink, 'Annotation', new_tab=True) if c else atag(c.uri, 'Paper', new_tab=True),
+                     else (atag(DOI(c.doi), c.doi, new_tab=True)
+                           if c.doi
+                           else ''),
+                     atag(c.shareLink, 'Annotation', new_tab=True)
+                     if c
+                     else atag(c.uri, 'Paper', new_tab=True),
                      c.user,
                      c.text if c.user != 'scibot' and c.text else '')
                     for i, c in enumerate(sorted((c for c in Curation
@@ -100,23 +104,34 @@ def make_app(annos, pannos=[]):
             kList.append(k)
 
     class NavBar:
-        def __call__(self):
-            return divtag(atag(url_for('route_base'), 'Home'),
-                          atag(url_for('route_papers'), 'Papers'),
-                          atag(url_for('route_anno_incorrect'), 'Incorrect'),
-                          atag(url_for('route_anno_unresolved'), 'Unresolved'),
-                          atag(url_for('route_anno_missing'), 'Missing'),
-                          atag(url_for('route_no_pmid'), 'No PMID'),
-                          atag(url_for('route_no_annos'), 'No annos'),
-                          atag(url_for('route_table'), 'All'),
-                          atag(url_for('route_anno_search'), 'Search'),
+        def atag(self, route, name):
+            if route == self.current_route:
+                return atag(url_for(route), name, cls='navbar-select')
+            else:
+                return atag(url_for(route), name)
+
+        def __call__(self, route=None):
+            self.current_route = route
+            out =  divtag(self.atag('route_base', 'Home'),
+                          self.atag('route_papers', 'Papers'),
+                          self.atag('route_anno_incorrect', 'Incorrect'),
+                          self.atag('route_anno_unresolved', 'Unresolved'),
+                          self.atag('route_anno_missing', 'Missing'),
+                          self.atag('route_no_pmid', 'No PMID'),
+                          self.atag('route_no_annos', 'No annos'),
+                          self.atag('route_table', 'All'),
+                          self.atag('route_anno_search', 'Search'),
                           # TODO search box
+                          atag('https://github.com/SciCrunch/scibot/issues',
+                               'GitHub issues', new_tab=True),
                           cls='navbar')
+            self.current_route = None
+            return out
 
     navbar = NavBar()
 
-    def table_rows(rows, title):
-        return htmldoc(navbar(),
+    def table_rows(rows, title, route):
+        return htmldoc(navbar(route),
                        divtag(render_table(rows, '#', 'Problem', 'Identifier', 'Link', 'Curator', 'Notes'),
                               cls='main'),
                        title=title,
@@ -146,7 +161,7 @@ def make_app(annos, pannos=[]):
     @app.route('/dashboard', methods=('GET', 'POST'))
     def route_base():
         return render_template('main.html', method='get',
-                               navbar=navbar(),
+                               navbar=navbar(request.url_rule.endpoint),
                                navbar_style = navbar_style,
                                var='We have a lot of work to do!',
                                nmissing='??',
@@ -326,7 +341,7 @@ def make_app(annos, pannos=[]):
     @app.route('/dashboard/table')
     def route_table():
         rows = filter_rows(Curation.INCOR_TAG, 'RRIDCUR:Unresolved', 'RRIDCUR:Missing', *bad_tags)
-        return table_rows(rows, 'All SciBot curation problems')
+        return table_rows(rows, 'All SciBot curation problems', request.url_rule.endpoint)
 
         """
         <style type="text/css">
@@ -359,7 +374,7 @@ def make_app(annos, pannos=[]):
 
     @app.route('/dashboard/no-annos')
     def route_no_annos():
-        return htmldoc(navbar(),
+        return htmldoc(navbar(request.url_rule.endpoint),
                        divtag('There shouldn\'t be anything here...',
                               cls='main'),
                        styles=(navbar_style,))
@@ -374,7 +389,7 @@ def make_app(annos, pannos=[]):
                        for url, rrids in Curation._papers.items()),
                       key=lambda r: int(r[3]),
                       reverse=True)
-        return htmldoc(navbar(),
+        return htmldoc(navbar(request.url_rule.endpoint),
                        divtag(render_table(rows, 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
                               cls='main'),
                        title='SciBot papers',
@@ -383,7 +398,7 @@ def make_app(annos, pannos=[]):
     @app.route('/dashboard/no-pmid')
     def route_no_pmid():
         rows = no_pmid()
-        return htmldoc(navbar(),
+        return htmldoc(navbar(request.url_rule.endpoint),
                        divtag(render_table(rows, 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
                               cls='main'),
                        title='SciBot papers',
@@ -394,12 +409,12 @@ def make_app(annos, pannos=[]):
     @app.route('/dashboard/incorrect')
     def route_anno_incorrect():
         rows = filter_rows(Curation.INCOR_TAG)
-        return table_rows(rows, 'Incorrect RRIDs')
+        return table_rows(rows, 'Incorrect RRIDs', request.url_rule.endpoint)
 
     @app.route('/dashboard/unresolved')
     def route_anno_unresolved():
         rows = filter_rows('RRIDCUR:Unresolved')
-        return table_rows(rows, 'Unresolved RRIDs')
+        return table_rows(rows, 'Unresolved RRIDs', request.url_rule.endpoint)
 
     @app.route('/dashboard/results')
     def search_results(search):
@@ -459,14 +474,14 @@ def make_app(annos, pannos=[]):
             return search_results(search)
         return render_template('search.html',
                                form=search,
-                               navbar=navbar(),
+                               navbar=navbar(request.url_rule.endpoint),
                                navbar_style=navbar_style,
                               )
 
     @app.route('/dashboard/missing', methods=('GET', 'POST'))
     def route_anno_missing():
         rows = filter_rows('RRIDCUR:Missing')
-        return table_rows(rows, 'Missing RRIDs')
+        return table_rows(rows, 'Missing RRIDs', request.url_rule.endpoint)
 
     #new_function = route('/my/route')(route_base)
 
