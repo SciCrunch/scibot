@@ -504,6 +504,7 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
 
     @property
     def curation_ids(self):
+        # FIXME extremely slow
         soup = BeautifulSoup(self._text, 'lxml')  # FIXME etree?
         p = soup.find('p', {'id':'curation-links'})
         if p is not None:

@@ -1,9 +1,4 @@
 #!/usr/bin/env python3.6
-import os
-import pickle
-import subprocess
-import html
-from pathlib import PurePath
 from os import environ
 from forms import SearchForm
 from scibot.release import Curation, PublicAnno
@@ -61,10 +56,10 @@ def route(route_name):
 def make_app(annos, pannos=[]):
     app = Flask('scibot dashboard')
     [Curation(a, annos) for a in annos]
-    #[PublicAnno(a, pannos) for a in pannos]
-    #embed()
+    [PublicAnno(a, pannos) for a in pannos]
     base_url = '/dashboard/'
-    names = ['missing', 'incorrect', 'papers', 'unresolved', 'no-pmid', 'no-annos', 'table', 'Journals']
+    names = ['missing', 'incorrect', 'papers', 'unresolved',
+             'no-pmid', 'no-doi', 'no-annos', 'table', 'Journals']
     for name in names:
         with open(f'{name}.txt','wt') as f:
             f.write('')
@@ -91,8 +86,7 @@ def make_app(annos, pannos=[]):
                      c.text if c.user != 'scibot' and c.text else '')
                     for i, c in enumerate(sorted((c for c in Curation
                                                   if ff(c.tags)),
-                                                 key=tag_string
-                                                )))
+                                                 key=tag_string)))
     k = 0
     kList = []
     URLDict = {}
@@ -118,6 +112,7 @@ def make_app(annos, pannos=[]):
                           self.atag('route_anno_unresolved', 'Unresolved'),
                           self.atag('route_anno_missing', 'Missing'),
                           self.atag('route_no_pmid', 'No PMID'),
+                          self.atag('route_no_doi', 'No DOI'),
                           self.atag('route_no_annos', 'No annos'),
                           self.atag('route_table', 'All'),
                           self.atag('route_anno_search', 'Search'),
@@ -140,16 +135,27 @@ def make_app(annos, pannos=[]):
     def nonestr(thing):
         return '' if thing is None else thing
 
+    def papers(filter=lambda r:True):
+        return [(str(i + 1),) + t
+                for i, t in
+                enumerate(sorted(((atag(url, '...' + url[-20:]),
+                                   nonestr(rrids.pmid),
+                                   '' if
+                                   rrids.doi is None else
+                                   atag(DOI(rrids.doi), rrids.doi),
+                                   str(len(rrids)),
+                                   str(len([a for r in rrids.values()
+                                            for a in r])))
+                                 for url, rrids in Curation._papers.items()
+                                 if filter(rrids)),
+                                 key=lambda r: int(r[4]),
+                                 reverse=True))]
+
     def no_pmid():
-        return sorted(((atag(url, '...' + url[-20:]),
-                        nonestr(rrids.pmid),
-                        '' if rrids.doi is None else atag(DOI(rrids.doi), rrids.doi),
-                        str(len(rrids)),
-                        str(len([a for r in rrids.values() for a in r])))
-                       for url, rrids in Curation._papers.items()
-                       if rrids.pmid is None),
-                      key=lambda r: int(r[3]),
-                      reverse=True)
+        return papers(lambda r:r.pmid is None)
+
+    def no_doi():
+        return papers(lambda r:r.doi is None)
 
     def no_annos():  # TODO
         return []
@@ -169,6 +175,7 @@ def make_app(annos, pannos=[]):
                                incor='??',
                                npapers=str(len(Curation._papers)),
                                nnopmid=str(len(no_pmid())),
+                               nnodoi=str(len(no_doi())),
                                #nnoannos=str(len(no_annos()))
                                nnoannos='??',
                                allp='??',)
@@ -182,12 +189,7 @@ def make_app(annos, pannos=[]):
     def route_anno_tags(user):
         print(user)
         out = '\n'.join([f'{anno.user} {anno.text} {anno.tags}<br>' for anno in Curation._annos_list if anno.user == user])
-        #embed()
         return out
-
-    @app.route('/dashboard/refresh')
-    def route_refresh():
-        return redirect('/dashboard')
 
     @app.route('/dashboard/journals')
     def route_Journals():
@@ -233,110 +235,28 @@ def make_app(annos, pannos=[]):
                         DOIList.append(h.doi)
         return (str(counter) + "<br><br>" + DOIStr)
 
-    @app.route('/dashboard/NoFurtherAction')
-    def route_NFA():
-        file = open("NFA.txt")
-        returnStr = file.read()
-        file.close()
-        if returnStr == '':
-            h = 0
-            a = 0 
-            counter = 0
-            returnStr += """0 Problems:
-                            <html>
-                            <style type="text/css">
-                              td {width: 300px; hight 40px}     
-                              td {border: 1px solid #000000;}
-                              a.class1:link {
-                                background-color: #009cdb;
-                                color: white;
-                                padding: 14px 25px;
-                                text-align: center;
-                                text-decoration: none;
-                                display: inline-block;
-                            }
-                              a.class2:visited, a.class2:link{
-                                background-color: #fcff56;
-                                color: black;
-                                padding: 14px 25px;
-                                text-align: center;
-                                text-decoration: none;
-                                display: inline-block;
-                            }
-                              a.class1:visited {
-                                background-color: #db4500;
-                                color: white;
-                            }
+    @app.route('/dashboard/done')
+    def route_done():
+        return 'TODO'
 
-                              a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
-                            </style>
-                            <table cellpadding = 3 cellspacing = 0>
-                            <tr>
-                              <td width: 70px>#</td>
-                              <td>Problem</th>
-                              <td>PMID</th>
-                              <td>Link</th>
-                              <td>Annotated By</th>
-                              <td>Notes</th>
-                            </tr>
-                            """
-            URLList = []
-            URLsUsed = []
-            DOIDict = {}
-            URLwDOI = {}
-            PMIDDict = {}
-            URLList.append('curation.scicrunch.com/paper/2')
-            URLList.append('curation.scicrunch.com/paper/1')
-            URLList.append('scicrunch.org/resources')
-            print("PROSSESING")
-            for h in Curation:
-                if [t for t in h.tags if t.startswith("DOI")]:
-                    URL = BaseURL(h._anno)
-                    if not URL in URLsUsed:
-                        if h.doi not in DOIDict.keys():
-                            DOIDict[h.doi] = []
-                        DOIDict[h.doi].append(URL)
-                        URLwDOI[URL] = h.doi
-                        URLsUsed.append(URL)
-            for h in Curation:
-                k = 0
-                URL = BaseURL(h._anno)
-                if [t for t in h.tags if t.startswith("PMID")]:
-                    PMID = [t.replace("PMID:", "") for t in h.tags if t.startswith("PMID")][0]
-                    if URL in URLsUsed:
-                        for k in range(0, len(DOIDict[URLwDOI[URL]])):
-                                PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
-                    else:
-                        PMIDDict[URL] = PMID
-            #print(str(len(Curation._annos_list)))
-            for h in Curation:
-                URL = BaseURL(h._anno)
-                if URL in PMIDDict.keys():
-                    PMID = PMIDDict[URL]
-                    PMID = f'<a href="https://www.ncbi.nlm.nih.gov/pubmed/{PMID}" class="class2" target="_blank">PMID:{PMID}</a>'
-                elif not URL in URLList:
-                    counter += 1
-                    if URL in URLwDOI.keys():
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/?term='+URLwDOI[URL].replace("['","").replace("']","")+' class="class2" target="_blank"> PubMed </a>'
-                    else:
-                        PMID = '<a href="https://www.ncbi.nlm.nih.gov/pubmed/" class="class2" target="_blank"> PubMed </a>'
-                    URLList.append(URL)
-                if [t for t in h.tags if "NoPMID" in t]:
-                    counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>NO PMID</td><td>"+ PMID +"</td><td><a href=" + h._anno.uri + ' class="class1" target="_blank"> Paper Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"No Further Action"+"</td></tr>"
-                if [t for t in h.tags if "InsuffiscientMetadata" in t]:
-                    if not InsuffiscientMetadata in h.tags[0]:
-                        problem = h.tags[0].replace("RRIDCUR: ", "")
-                    else:
-                        problem = h.tags[1].replace("RRIDCUR: ", "")
-                    counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>"+problem+"</td><td>"+ PMID +"</td><td><a href=" + h.shareLink + ' class="class1" target="_blank"> Anno Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"No Further Action"+"</td></tr>"
-            returnStr += "</table></html>"
-            returnStr =  '<a href=/dashboard class="class2"> BACK </a><br>' + str(counter) + returnStr[1:]
-            file = open("NFA.txt", "w")
-            file.write(returnStr)
-            file.close()
-        return(returnStr)
+    @app.route('/dashboard/public')
+    def route_public():
+        #return 'TODO'
+        rows = ((str(i + 1),) + r for i, r in
+                enumerate((nonestr(pa.curation_paper.pmid),
+                           nonestr(pa.curation_paper.doi),
+                           pa.rrid,)
+                          for pa in PublicAnno
+                          # skip incorrectly formatted and errors for now
+                          if pa.curation_ids and
+                          None not in pa.curation_annos and
+                          pa.rrid is not None  # FIXME make clear these are page notes
+                ))
+        return htmldoc(navbar(request.url_rule.endpoint),
+                       divtag(render_table(rows, '#', 'PMID', 'DOI', 'RRID'),
+                                           cls='main'),
+                       title='SciBot public release',
+                       styles=(table_style, navbar_style))
 
     @app.route('/dashboard/table')
     def route_table():
@@ -377,18 +297,12 @@ def make_app(annos, pannos=[]):
         return htmldoc(navbar(request.url_rule.endpoint),
                        divtag('There shouldn\'t be anything here...',
                               cls='main'),
+                       title='SciBot No Anno Papers',
                        styles=(navbar_style,))
 
     @app.route('/dashboard/papers')
     def route_papers():
-        rows = sorted(((atag(url, '...' + url[-20:]),
-                        nonestr(rrids.pmid),
-                        nonestr(rrids.doi),
-                        str(len(rrids)),
-                        str(len([a for r in rrids.values() for a in r])))
-                       for url, rrids in Curation._papers.items()),
-                      key=lambda r: int(r[3]),
-                      reverse=True)
+        rows = papers()
         return htmldoc(navbar(request.url_rule.endpoint),
                        divtag(render_table(rows, 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
                               cls='main'),
@@ -399,12 +313,19 @@ def make_app(annos, pannos=[]):
     def route_no_pmid():
         rows = no_pmid()
         return htmldoc(navbar(request.url_rule.endpoint),
-                       divtag(render_table(rows, 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
+                       divtag(render_table(rows, '#', 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
                               cls='main'),
-                       title='SciBot papers',
+                       title='SciBot No PMID Papers',
                        styles=(table_style, navbar_style))
 
-
+    @app.route('/dashboard/no-doi')
+    def route_no_doi():
+        rows = no_doi()
+        return htmldoc(navbar(request.url_rule.endpoint),
+                       divtag(render_table(rows, '#', 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
+                              cls='main'),
+                       title='SciBot No DOI Papers',
+                       styles=(table_style, navbar_style))
 
     @app.route('/dashboard/incorrect')
     def route_anno_incorrect():
@@ -486,8 +407,10 @@ def make_app(annos, pannos=[]):
     #new_function = route('/my/route')(route_base)
 
     #return new_function
+    #embed()
     return app
     #new_function_outside = make_app('not really annos')
+
 def search_text(text, annos,  search):
         h = 0
         hlist = []
@@ -543,8 +466,10 @@ def annoSync(memfile, group, helpers=tuple(), world_ok=False):
 
 def setup():
     get_annos, annos, stream_loop = annoSync(memfile, (Curation,))
+    get_pannos, pannos, pstream_loop = annoSync(pmemfile, group_staging,
+                                                (PublicAnno,), world_ok=True)
     stream_loop.start()
-    app = make_app(annos)
+    app = make_app(annos, pannos)
     app.debug=False
     return app
 
