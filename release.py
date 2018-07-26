@@ -8,7 +8,7 @@ from urllib.parse import quote
 from collections import defaultdict
 import requests
 from bs4 import BeautifulSoup
-from pyontutils.utils import noneMembers, anyMembers, allMembers
+from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from scibot.export import api_token, username, group, group_staging, bad_tags, get_proper_citation
 from scibot.rrid import getDoi, get_pmid, annotate_doi_pmid
@@ -25,8 +25,13 @@ elif group.startswith('4'):
     print('Test annos')
     memfile = '/tmp/test-scibot-annotations.pickle'
 
+if group_staging == '__world__':
+    pmemfile = '/tmp/scibot-public-annos.pickle'
+else:
+    pmemfile = f'/tmp/scibot-{group_staging}-annos.pickle'
+
 get_annos = Memoizer(memfile, api_token, username, group, 200000)
-get_pannos = Memoizer('/tmp/scibot-public-annos.pickle', api_token, username, group_staging)
+get_pannos = Memoizer(pmemfile, api_token, username, group_staging)
 
 def getPMID(tags):
     # because sometime there is garbage in the annotations
@@ -476,6 +481,7 @@ class RRIDAnno(HypothesisHelper):
 class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the first place
     staging_group = group_staging
     release_group = '__world__'
+    h_curation = HypothesisUtils(username=username, token=api_token, group=group, max_results=200000)
     h_staging = HypothesisUtils(username=username, token=api_token, group=group_staging, max_results=100000)
     _annos = {}
     objects = {}
@@ -491,7 +497,8 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
         r = cls._papers[uri][rrid]
         if r:
             if len(r) > 1:
-                raise TypeError('ERROR: Duplicate public annotation on RRID paper!')
+                print(tc.red('WARNING:'), f'Duplicate public annotation on RRID paper!\n{r}')
+                #raise TypeError(f'ERROR: Duplicate public annotation on RRID paper!\n{r}')
             else:
                 return next(iter(r))
 
@@ -568,7 +575,7 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
 class Curation(RRIDAnno):
     docs_link = 'https://scicrunch.org/resources/about/scibot'  # TODO update with explication of the tags
     skip_users = 'mpairish',
-    h_curation = HypothesisUtils(username=username, token=api_token, group=group, max_results=200000)
+    h_curation = PublicAnno.h_curation
     h_staging = PublicAnno.h_staging
     private_replies = {}  # in cases where a curator made the annotation
     _annos = {}

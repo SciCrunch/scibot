@@ -6,7 +6,7 @@ import html
 from pathlib import PurePath
 from os import environ
 from forms import SearchForm
-from scibot.release import Curation
+from scibot.release import Curation, PublicAnno
 from scibot.rrid import PMID, DOI
 from scibot.export import bad_tags
 from pyontutils.utils import anyMembers
@@ -45,6 +45,11 @@ elif group.startswith('4'):
     print('Test annos')
     memfile = '/tmp/test-scibot-annotations.pickle'
 
+if group_staging == '__world__':
+    pmemfile = '/tmp/scibot-public-annos.pickle'
+else:
+    pmemfile = f'/tmp/scibot-{group_staging}-annos.pickle'
+
 def route(route_name):
     def wrapper(function):
         def inner(*args, **kwargs):
@@ -53,10 +58,11 @@ def route(route_name):
         return inner
     return wrapper
 
-def make_app(annos):
+def make_app(annos, pannos=[]):
     app = Flask('scibot dashboard')
     [Curation(a, annos) for a in annos]
-    #[Curation(a, annos) for a in annos]
+    #[PublicAnno(a, pannos) for a in pannos]
+    #embed()
     base_url = '/dashboard/'
     names = ['missing', 'incorrect', 'papers', 'unresolved', 'no-pmid', 'no-annos', 'table', 'Journals']
     for name in names:
@@ -507,8 +513,8 @@ def Journal(anno):
     URL = SplitURL[0]
     return URL
 
-def annoSync(memfile, helpers=tuple()):
-    if group == '__world__':
+def annoSync(memfile, group, helpers=tuple(), world_ok=False):
+    if group == '__world__' and not world_ok:
         raise ValueError('Group is set to __world__ please run the usual `export HYP_ ...` command.')
     get_annos = Memoizer(memfile, api_token, username, group, 200000)
     yield get_annos
@@ -528,15 +534,18 @@ def setup():
     return app
 
 def main():
-    get_annos, annos, stream_loop = annoSync(memfile, (Curation,))
-    app = make_app(annos)
+    get_annos, annos, stream_loop = annoSync(memfile, group, (Curation,))
+    get_pannos, pannos, pstream_loop = annoSync(pmemfile, group_staging,
+                                                (PublicAnno,), world_ok=True)
+
+    app = make_app(annos, pannos)
     #stream_loop.start()
+    #pstream_loop.start()  # FIXME eventloop already running error...
     app.secret_key = 'super secret key'
     app.config['SESSION_TYPE'] = 'filesystem'
     print(app.view_functions)
     app.debug = True
     app.run(host='localhost', port=8080)
-    #embed()
 
 if __name__ == '__main__':
     main()
