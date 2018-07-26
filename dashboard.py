@@ -1,5 +1,4 @@
 #!/usr/bin/env python3.6
-
 import os
 import pickle
 import subprocess
@@ -8,10 +7,15 @@ from pathlib import PurePath
 from os import environ
 from forms import SearchForm
 from scibot.release import Curation
-from pyontutils.htmlfun import table_style
+from scibot.rrid import PMID, DOI
+from scibot.export import bad_tags
+from pyontutils.utils import anyMembers
+from pyontutils.htmlfun import render_table, htmldoc, atag, divtag
+from pyontutils.htmlfun import table_style, navbar_style
+ 
 from hyputils.subscribe import preFilter, AnnotationStream
 from hyputils.handlers import helperSyncHandler, filterHandler
-from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
+from hyputils.hypothesis import Memoizer
 from flask import Flask
 from flask import (
     Blueprint, flash, g, redirect, render_template, request, session, url_for
@@ -20,6 +24,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from IPython import embed
 from wtforms import Form, StringField, SelectField
 bp = Blueprint('Search', __name__)
+
+print('END IMPORTS')
 
 api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
 username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
@@ -49,7 +55,8 @@ def route(route_name):
 
 def make_app(annos):
     app = Flask('scibot dashboard')
-    [HypothesisHelper(a, annos) for a in annos]
+    [Curation(a, annos) for a in annos]
+    #[Curation(a, annos) for a in annos]
     base_url = '/dashboard/'
     names = ['missing', 'incorrect', 'papers', 'unresolved', 'no-pmid', 'no-annos', 'table', 'Journals']
     for name in names:
@@ -58,20 +65,31 @@ def make_app(annos):
     k = 0
     kList = []
     URLDict = {}
-    for h in HypothesisHelper:
+    for h in Curation:
         if BaseURL(h._anno) in URLDict.keys():
             URLDict[BaseURL(h._anno)] += 1
         else:
             URLDict[BaseURL(h._anno)] = 1
             kList.append(k)
 
+    class NavBar:
+        def __call__(self):
+            return divtag(atag(url_for('route_base'), 'Home'),
+                          atag(url_for('route_anno_incorrect'), 'Incorrect'),
+                          atag(url_for('route_anno_unresolved'), 'Unresolved'),
+                          atag(url_for('route_anno_missing'), 'Missing'),
+                          atag(url_for('route_no_annos'), 'No annos'),
+                          atag(url_for('route_table'), 'All'),
+                          cls='navbar')
+
+    navbar = NavBar()
+
     @app.route('/css/table.css')
     def route_css_table_style():
-        return table_style
+        return table_style, 200, {'Content-Type':'text/css'}
 
     @app.route('/dashboard', methods=('GET', 'POST'))
     def route_base():
-        #rows = [url_for()]
         #return render_table(rows)
         #return htmldoc(render_table(((s, p, '<input type="button" label="OK" form="curation-form" value="OK">',o) for s, p, o in trips), 'subject', 'predicate', 'button', 'object'),
         if request.method == 'POST':
@@ -157,17 +175,17 @@ def make_app(annos):
             elif request.form['submit'] == 'Papers with no PMID':
                 return redirect('/dashboard/no-pmid')
         else:
-            return render_template('main.html')
+            return render_template('main.html', method='get', var='We have a lot of work to do!')
 
     @app.route('/dashboard/anno-count')
     def route_anno_count():
-        return str(len(HypothesisHelper._annos_list))
+        return str(len(Curation._annos_list))
 
     #@app.route(PurePath(base_url, 'anno-tags').as_posix())
     @app.route('/dashboard/anno-user/<user>')
     def route_anno_tags(user):
         print(user)
-        out = '\n'.join([f'{anno.user} {anno.text} {anno.tags}<br>' for anno in HypothesisHelper._annos_list if anno.user == user])
+        out = '\n'.join([f'{anno.user} {anno.text} {anno.tags}<br>' for anno in Curation._annos_list if anno.user == user])
         #embed()
         return out
 
@@ -175,7 +193,7 @@ def make_app(annos):
     def route_refresh():
         return redirect('/dashboard')
 
-    @app.route('/dashboard/Journals')
+    @app.route('/dashboard/journals')
     def route_Journals():
         file = open("Journals.txt","r")
         paperStr = file.read()
@@ -186,7 +204,7 @@ def make_app(annos):
             counter = 0
             paperStr = str(counter) + ' Results:<br><br>'
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 journal = Journal(h._anno)
                 if "urn:x-pdf" in journal or "file:" in journal:
                     URLList.append(journal)
@@ -208,16 +226,15 @@ def make_app(annos):
         DOIStr = ""
         DOIList = []
         counter = 0
-        for h in HypothesisHelper:
+        for h in Curation:
             if [t for t in h.tags if t.startswith("DOI")]:
-                DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                if not DOI in DOIList:
+                if h.doi not in DOIList:
                     DOIStr += '<br> Anno #:%s <br>' % h
                     DOIStr += '<a href=' + h.shareLink + '> Anno Link </a><br>'
-                    DOIStr += DOI
+                    DOIStr += h.doi
                     counter += 1
-                    if not DOI == '':
-                        DOIList.append(DOI)
+                    if h.doi:
+                        DOIList.append(h.doi)
         return (str(counter) + "<br><br>" + DOIStr)
 
     @app.route('/dashboard/NoFurtherAction')
@@ -276,17 +293,16 @@ def make_app(annos):
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 if [t for t in h.tags if t.startswith("DOI")]:
                     URL = BaseURL(h._anno)
                     if not URL in URLsUsed:
-                        DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                        if not DOI in DOIDict.keys():
-                            DOIDict[DOI] = []
-                        DOIDict[DOI].append(URL)
-                        URLwDOI[URL] = DOI
+                        if h.doi not in DOIDict.keys():
+                            DOIDict[h.doi] = []
+                        DOIDict[h.doi].append(URL)
+                        URLwDOI[URL] = h.doi
                         URLsUsed.append(URL)
-            for h in HypothesisHelper:
+            for h in Curation:
                 k = 0
                 URL = BaseURL(h._anno)
                 if [t for t in h.tags if t.startswith("PMID")]:
@@ -296,8 +312,8 @@ def make_app(annos):
                                 PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
                     else:
                         PMIDDict[URL] = PMID
-            #print(str(len(HypothesisHelper._annos_list)))
-            for h in HypothesisHelper:
+            #print(str(len(Curation._annos_list)))
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if URL in PMIDDict.keys():
                     PMID = PMIDDict[URL]
@@ -382,15 +398,14 @@ def make_app(annos):
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if [t for t in h.tags if t.startswith("DOI")]:
                     if not URL in URLsUsed:
-                        DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                        if not DOI in DOIDict.keys():
-                            DOIDict[DOI] = []
-                        DOIDict[DOI].append(URL)
-                        URLwDOI[URL] = DOI
+                        if h.doi not in DOIDict:
+                            DOIDict[h.doi] = []
+                        DOIDict[h.doi].append(URL)
+                        URLwDOI[URL] = h.doi
                         URLsUsed.append(URL)
                 if [t for t in h.tags if t.startswith("PMID")]:
                     PMID = [t.replace("PMID:", "") for t in h.tags if t.startswith("PMID")][0]
@@ -420,10 +435,29 @@ def make_app(annos):
 
     @app.route('/dashboard/table')
     def route_table():
-        file = open("table.txt")
-        returnStr = file.read()
-        file.close()
+        def tag_string(c):
+            return ' '.join(sorted(t.replace('RRIDCUR:', '') for t in c.tags if 'RRIDCUR' in t))
 
+        rows = [(str(i + 1),
+                 tag_string(c),
+                 atag(PMID(c.pmid), c.pmid, new_tab=True)
+                 if c.pmid
+                 else (atag(DOI(c.doi), c.doi, new_tab=True) if c.doi else ''),
+                 atag(c.shareLink, 'Annotation', new_tab=True) if c else atag(c.uri, 'Paper', new_tab=True),
+                 c.user,
+                 c.text if c.user != 'scibot' and c.text else '')
+                for i, c in enumerate(sorted((c for c in Curation
+                                              if anyMembers(c.tags, c.INCOR_TAG, 'RRIDCUR:Missing', 'RRIDCUR:Unresolved', *bad_tags)),
+                                             key=tag_string
+                                            ))
+               ]
+        return htmldoc(navbar(),
+                       divtag(render_table(rows, '#', 'Problem', 'Identifier', 'Link', 'Curator', 'Notes'),
+                              cls='main'),
+                       title='All SciBot curation problems',
+                       styles=(table_style, navbar_style))
+
+    def fuckyou():
         navheader = '<a href=/dashboard class="class2"> BACK </a><a href=/dashboard/anno-incorrect class="class2"> INCORRECT </a><a href=/dashboard/anno-missing class="class2"> MISSING </a><a href=/dashboard/anno-unresolved class="class2"> UNRESOLVED </a><a href=/dashboard/no-pmid class="class2"> NO PMID </a><a href=/dashboard/no-annos class="class2"> NO ANNOTATIONS </a><br>'
 
         if returnStr == '':
@@ -486,15 +520,15 @@ HACKHACK Problems:
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if [t for t in h.tags if t.startswith("DOI")]:
                     if not URL in URLsUsed:
                         DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                        if not DOI in DOIDict.keys():
-                            DOIDict[DOI] = []
-                        DOIDict[DOI].append(URL)
-                        URLwDOI[URL] = DOI
+                        if h.doi not in DOIDict:
+                            DOIDict[h.doi] = []
+                        DOIDict[h.doi].append(URL)
+                        URLwDOI[URL] = h.doi
                         URLsUsed.append(URL)
                 k = 0
                 if [t for t in h.tags if t.startswith("PMID")]:
@@ -505,15 +539,15 @@ HACKHACK Problems:
                     else:
                         PMIDDict[URL] = PMID
             numDict = {}
-            for a in HypothesisHelper._annos_list:
+            for a in Curation._annos_list:
                 if BaseURL(a) in URLwDOI.keys():
                     DOI = URLwDOI[BaseURL(a)]
                     if not DOI in numDict.keys():
                         numDict[DOI] = 1
                     else:
                         numDict[DOI] += 1
-            print(len(HypothesisHelper._annos_list))
-            for h in HypothesisHelper:
+            print(len(Curation._annos_list))
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if URL in PMIDDict.keys():
                     PMID = PMIDDict[URL]
@@ -553,7 +587,7 @@ HACKHACK Problems:
         return returnStr
 
     @app.route('/dashboard/no-annos')
-    def route_No_Annos():
+    def route_no_annos():
         file = open("no-annos.txt")
         returnStr = file.read()
         file.close()
@@ -608,7 +642,7 @@ HACKHACK Problems:
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 if [t for t in h.tags if t.startswith("DOI")]:
                     URL = BaseURL(h._anno)
                     if not URL in URLsUsed:
@@ -618,7 +652,7 @@ HACKHACK Problems:
                         DOIDict[DOI].append(URL)
                         URLwDOI[URL] = DOI
                         URLsUsed.append(URL)
-            for h in HypothesisHelper:
+            for h in Curation:
                 k = 0
                 URL = BaseURL(h._anno)
                 if [t for t in h.tags if t.startswith("PMID")]:
@@ -636,8 +670,8 @@ HACKHACK Problems:
                         numDict[DOI] = 1
                     else:
                         numDict[DOI] += 1
-            print(len(HypothesisHelper._annos_list))
-            for h in HypothesisHelper:
+            print(len(Curation._annos_list))
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if URL in PMIDDict.keys():
                     PMID = PMIDDict[URL]
@@ -673,7 +707,7 @@ HACKHACK Problems:
             URLList.append('curation.scicrunch.com/paper/2')
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
-            for a in HypothesisHelper:
+            for a in Curation:
                 URL = BaseURL(Annos[a])
                 if URLDict[URL] < 3:
                     URLList.append(URL)
@@ -681,7 +715,7 @@ HACKHACK Problems:
             ProbCounter = 0
             paperStr += str(counter) + ' Results:<br>' + str(ProbCounter) + ' Papers with no PMID or DOI<br><br>'
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 if [t for t in h.tags if t.startswith("DOI")]:
                     DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
                     URL = BaseURL(h._anno)
@@ -714,7 +748,7 @@ HACKHACK Problems:
                             PMIDList.append(PMID)
                     elif not URL in URLList:
                         URLList.append(URL)
-            for h in HypothesisHelper:
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if not URL in URLList:
                     paperStr += '<a href="' + h._anno.uri + '"> Paper Link </a><br>'
@@ -788,7 +822,7 @@ HACKHACK Problems:
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 if [t for t in h.tags if t.startswith("DOI")]:
                     URL = BaseURL(h._anno)
                     if not URL in URLsUsed:
@@ -798,7 +832,7 @@ HACKHACK Problems:
                         DOIDict[DOI].append(URL)
                         URLwDOI[URL] = DOI
                         URLsUsed.append(URL)
-            for h in HypothesisHelper:
+            for h in Curation:
                 k = 0
                 URL = BaseURL(h._anno)
                 if [t for t in h.tags if t.startswith("PMID")]:
@@ -808,8 +842,8 @@ HACKHACK Problems:
                                 PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
                     else:
                         PMIDDict[URL] = PMID
-            print(len(HypothesisHelper._annos_list))
-            for h in HypothesisHelper:
+            print(len(Curation._annos_list))
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if URL in PMIDDict.keys():
                     PMID = PMIDDict[URL]
@@ -884,7 +918,7 @@ HACKHACK Problems:
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 if [t for t in h.tags if t.startswith("DOI")]:
                     URL = BaseURL(h._anno)
                     if not URL in URLsUsed:
@@ -894,7 +928,7 @@ HACKHACK Problems:
                         DOIDict[DOI].append(URL)
                         URLwDOI[URL] = DOI
                         URLsUsed.append(URL)
-            for h in HypothesisHelper:
+            for h in Curation:
                 k = 0
                 URL = BaseURL(h._anno)
                 if [t for t in h.tags if t.startswith("PMID")]:
@@ -904,8 +938,8 @@ HACKHACK Problems:
                                 PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
                     else:
                         PMIDDict[URL] = PMID
-            print(len(HypothesisHelper._annos_list))
-            for h in HypothesisHelper:
+            print(len(Curation._annos_list))
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if URL in PMIDDict.keys():
                     PMID = PMIDDict[URL]
@@ -933,13 +967,13 @@ HACKHACK Problems:
     #    if search.data['search'] == '':
     #        h = 0
     #        hstr = ''
-    #        for h in HypothesisHelper:
+    #        for h in Curation:
     #            hstr += repr(h)
     #            h += 1
     #        return(hstr)
     #    else:
         if search.data['select'] == 'ID':
-            for h in HypothesisHelper:
+            for h in Curation:
                 if search.data['search'] in h.id:
                     hstr += '<br> Anno #:%s <br>' % h
                     hstr += '<a href=' + h.shareLink + '> Anno Link </a><br>'
@@ -950,7 +984,7 @@ HACKHACK Problems:
             return (str(counter) + ' Results:<br><br>' + hstr)
             #return render_template('results.html', results=html.unescape(hstr))
         elif search.data['select'] == 'Tags':
-            for h in HypothesisHelper:
+            for h in Curation:
                 if [t for t in h.tags if search.data['search'] in t]:
                     hstr += '<br> Anno #:%s <br>' % h
                     hstr += '<a href=' + h.shareLink + '> Anno Link </a><br>'
@@ -959,11 +993,11 @@ HACKHACK Problems:
             if hstr == '':
                 return('no results')
             print (str(len(hlist)))
-            print(len(HypothesisHelper._annos_list))
+            print(len(Curation._annos_list))
             return (str(counter) + ' Results:<br><br>' + hstr)
             #return render_template('results.html', results=hstr)
         elif search.data['select'] == 'User':
-            for h in HypothesisHelper:
+            for h in Curation:
                 if h._anno.user == search.data['search']:
                     hstr += '<br> Anno #:%s <br>' % h
                     hstr += '<a href=' + h.shareLink + '> Anno Link </a><br>'
@@ -973,7 +1007,7 @@ HACKHACK Problems:
                 return('no results')
             return (str(counter) + ' Results:<br><br>' + hstr)
         else:
-            return search_text(search.data['select'], HypothesisHelper._annos_list, list(HypothesisHelper), search.data['search'])
+            return search_text(search.data['select'], Curation._annos_list, list(Curation), search.data['search'])
 
     @app.route('/dashboard/anno-search', methods=('GET', 'POST'))
     def route_anno_search():
@@ -1038,7 +1072,7 @@ HACKHACK Problems:
             URLList.append('curation.scicrunch.com/paper/1')
             URLList.append('scicrunch.org/resources')
             print("PROSSESING")
-            for h in HypothesisHelper:
+            for h in Curation:
                 if [t for t in h.tags if t.startswith("DOI")]:
                     URL = BaseURL(h._anno)
                     if not URL in URLsUsed:
@@ -1048,7 +1082,7 @@ HACKHACK Problems:
                         DOIDict[DOI].append(URL)
                         URLwDOI[URL] = DOI
                         URLsUsed.append(URL)
-            for h in HypothesisHelper:
+            for h in Curation:
                 k = 0
                 URL = BaseURL(h._anno)
                 if [t for t in h.tags if t.startswith("PMID")]:
@@ -1058,8 +1092,8 @@ HACKHACK Problems:
                                 PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
                     else:
                         PMIDDict[URL] = PMID
-            print(len(HypothesisHelper._annos_list))
-            for h in HypothesisHelper:
+            print(len(Curation._annos_list))
+            for h in Curation:
                 URL = BaseURL(h._anno)
                 if URL in PMIDDict.keys():
                     PMID = PMIDDict[URL]
@@ -1089,7 +1123,7 @@ def search_text(text, annos,  search):
         hlist = []
         hstr = ''
         counter = 0
-        for h in HypothesisHelper:
+        for h in Curation:
             hsplit = h.text.split('<p>',h.text.count('<p>'))
             t = 0
             Data = ''
@@ -1138,14 +1172,14 @@ def annoSync(memfile, helpers=tuple()):
     yield stream_loop
 
 def setup():
-    get_annos, annos, stream_loop = annoSync(memfile, (Curation, HypothesisHelper))
+    get_annos, annos, stream_loop = annoSync(memfile, (Curation,))
     stream_loop.start()
     app = make_app(annos)
     app.debug=False
     return app
 
 def main():
-    get_annos, annos, stream_loop = annoSync(memfile, (Curation, HypothesisHelper))
+    get_annos, annos, stream_loop = annoSync(memfile, (Curation,))
     app = make_app(annos)
     #stream_loop.start()
     app.secret_key = 'super secret key'
