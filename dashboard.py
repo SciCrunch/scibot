@@ -465,7 +465,7 @@ def annoSync(memfile, group, helpers=tuple(), world_ok=False):
     yield stream_loop
 
 def setup():
-    get_annos, annos, stream_loop = annoSync(memfile, (Curation,))
+    get_annos, annos, stream_loop = annoSync(memfile, group, (Curation,))
     get_pannos, pannos, pstream_loop = annoSync(pmemfile, group_staging,
                                                 (PublicAnno,), world_ok=True)
     stream_loop.start()
