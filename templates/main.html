@@ -3,6 +3,10 @@
     <head>
         <title>SciBot Curation Dashboard</title>
         <link href={{ url_for('route_css_table_style') }} rel="stylesheet">
+        <style type="text/css">
+            tr:hover { background-color: inherit; }
+            td:hover { background-color: #fcfcfc; }
+        </style>
     </head>
 
     <body>
@@ -13,25 +17,25 @@
         <table align="center" cellspacing="20">
             <tr>
                 <td>
-                    <a href={{ url_for('route_anno_missing') }}>List of Missing</a>
+                    <a href={{ url_for('route_anno_missing') }}>Missing ({{ nmissing }})</a>
                 </td>
                 <td>
-                    <a href={{ url_for('route_anno_unresolved') }}>List of Unresolved</a>
+                    <a href={{ url_for('route_anno_unresolved') }}>Unresolved ({{ nures }})</a>
                 </td>
                 <td>
-                    <a href={{ url_for('route_anno_incorrect') }}>List of Incorrect</a>
+                    <a href={{ url_for('route_anno_incorrect') }}>Incorrect ({{ incor }})</a>
                 </td>
                 <td>
-                    <a href={{ url_for('route_Paper_List') }}>Paper List</a>
+                    <a href={{ url_for('route_papers') }}>Papers ({{ npapers }})</a>
                 </td>
                 <td>
-                    <a href={{ url_for('route_no_PMID') }}>Papers with no PMID</a>
+                    <a href={{ url_for('route_no_pmid') }}>No PMID ({{ nnopmid }})</a>
                 </td>
                 <td>
-                    <a href={{ url_for('route_no_annos') }}>Papers with no Annos</a>
+                    <a href={{ url_for('route_no_annos') }}>No Annos ({{ nnoannos }})</a>
                 </td>
                 <td>
-                    <a href={{ url_for('route_table') }}>All Problems</a>
+                    <a href={{ url_for('route_table') }}>All Problems ({{ allp }})</a>
                 </td>
             </tr>
         </table>

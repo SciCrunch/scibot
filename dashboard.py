@@ -62,6 +62,27 @@ def make_app(annos):
     for name in names:
         with open(f'{name}.txt','wt') as f:
             f.write('')
+
+    def tag_string(c):
+        return ' '.join(sorted(t.replace('RRIDCUR:', '') for t in c.tags if 'RRIDCUR' in t))
+
+    def filter_rows(*tags):
+        if not tags:
+            ff = lambda t: True
+        else:
+            ff = lambda ltags: anyMembers(ltags, *tags)
+        yield from ((str(i + 1),
+                     tag_string(c),
+                     atag(PMID(c.pmid), c.pmid, new_tab=True)
+                     if c.pmid
+                     else (atag(DOI(c.doi), c.doi, new_tab=True) if c.doi else ''),
+                     atag(c.shareLink, 'Annotation', new_tab=True) if c else atag(c.uri, 'Paper', new_tab=True),
+                     c.user,
+                     c.text if c.user != 'scibot' and c.text else '')
+                    for i, c in enumerate(sorted((c for c in Curation
+                                                  if ff(c.tags)),
+                                                 key=tag_string
+                                                )))
     k = 0
     kList = []
     URLDict = {}
@@ -75,6 +96,7 @@ def make_app(annos):
     class NavBar:
         def __call__(self):
             return divtag(atag(url_for('route_base'), 'Home'),
+                          atag(url_for('route_papers'), 'Papers'),
                           atag(url_for('route_anno_incorrect'), 'Incorrect'),
                           atag(url_for('route_anno_unresolved'), 'Unresolved'),
                           atag(url_for('route_anno_missing'), 'Missing'),
@@ -84,98 +106,45 @@ def make_app(annos):
 
     navbar = NavBar()
 
+    def table_rows(rows, title):
+        return htmldoc(navbar(),
+                       divtag(render_table(rows, '#', 'Problem', 'Identifier', 'Link', 'Curator', 'Notes'),
+                              cls='main'),
+                       title=title,
+                       styles=(table_style, navbar_style))
+
+    def nonestr(thing):
+        return '' if thing is None else thing
+
+    def no_pmid():
+        return sorted(((atag(url, '...' + url[-20:]), nonestr(rrids.pmid),
+                        nonestr(rrids.doi),
+                        str(len(rrids)),
+                        str(len([a for r in rrids.values() for a in r])))
+                       for url, rrids in Curation._papers.items()
+                       if rrids.pmid is None),
+                      key=lambda r: int(r[3]),
+                      reverse=True)
+
+    def no_annos():  # TODO
+        return []
+
     @app.route('/css/table.css')
     def route_css_table_style():
         return table_style, 200, {'Content-Type':'text/css'}
 
     @app.route('/dashboard', methods=('GET', 'POST'))
     def route_base():
-        #return render_table(rows)
-        #return htmldoc(render_table(((s, p, '<input type="button" label="OK" form="curation-form" value="OK">',o) for s, p, o in trips), 'subject', 'predicate', 'button', 'object'),
-        if request.method == 'POST':
-            if request.form['submit'] == 'Search':
-                return redirect('/dashboard/anno-search')
-            elif request.form['submit'] == 'List of Missing':
-                return redirect('/dashboard/anno-missing')
-            elif request.form['submit'] == 'List of Unresolved':
-                return redirect('/dashboard/anno-unresolved')
-            elif request.form['submit'] == 'List of Incorrect':
-                return redirect('/dashboard/anno-incorrect')
-            elif request.form['submit'] == 'Papers with no Annos':
-                return redirect('/dashboard/no-annos')
-            elif request.form['submit'] == 'Journals':
-                return redirect('/dashboard/Journals')
-            elif request.form['submit'] == 'All Problems':
-                return redirect('/dashboard/table')
-            elif request.form['submit'] == 'Refresh Missing':
-                file = open("missing.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Refresh All':
-                file = open("missing.txt", "w")
-                file.write("")
-                file.close()
-                file = open("unresolved.txt", "w")
-                file.write("")
-                file.close()
-                file = open("papers.txt", "w")
-                file.write("")
-                file.close()
-                file = open("incorrect.txt", "w")
-                file.write("")
-                file.close()
-                file = open("no-pmid.txt", "w")
-                file.write("")
-                file.close()
-                file = open("no-annos.txt", "w")
-                file.write("")
-                file.close()
-                file = open("table.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Refresh Unresolved':
-                file = open("unresolved.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Refresh Paper List':
-                file = open("papers.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Refresh Incorrect':
-                file = open("incorrect.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Refresh No PMID List':
-                file = open("no-pmid.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Refresh No Annos':
-                file = open("no-annos.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Refresh Journals':
-                file = open("Journals.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Refresh Problems':
-                file = open("table.txt", "w")
-                file.write("")
-                file.close()
-                return render_template('main.html')
-            elif request.form['submit'] == 'Paper List':
-                return redirect('/dashboard/paper-list')
-            elif request.form['submit'] == 'Papers with no PMID':
-                return redirect('/dashboard/no-pmid')
-        else:
-            return render_template('main.html', method='get', var='We have a lot of work to do!')
+        return render_template('main.html', method='get',
+                               var='We have a lot of work to do!',
+                               nmissing='??',
+                               nures='??',
+                               incor='??',
+                               npapers=str(len(Curation._papers)),
+                               nnopmid=str(len(no_pmid())),
+                               #nnoannos=str(len(no_annos()))
+                               nnoannos='??',
+                               allp='??',)
 
     @app.route('/dashboard/anno-count')
     def route_anno_count():
@@ -247,43 +216,43 @@ def make_app(annos):
             a = 0 
             counter = 0
             returnStr += """0 Problems:
-<html>
-<style type="text/css">
-  td {width: 300px; hight 40px}     
-  td {border: 1px solid #000000;}
-  a.class1:link {
-    background-color: #009cdb;
-    color: white;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class2:visited, a.class2:link{
-    background-color: #fcff56;
-    color: black;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class1:visited {
-    background-color: #db4500;
-    color: white;
-}
+                            <html>
+                            <style type="text/css">
+                              td {width: 300px; hight 40px}     
+                              td {border: 1px solid #000000;}
+                              a.class1:link {
+                                background-color: #009cdb;
+                                color: white;
+                                padding: 14px 25px;
+                                text-align: center;
+                                text-decoration: none;
+                                display: inline-block;
+                            }
+                              a.class2:visited, a.class2:link{
+                                background-color: #fcff56;
+                                color: black;
+                                padding: 14px 25px;
+                                text-align: center;
+                                text-decoration: none;
+                                display: inline-block;
+                            }
+                              a.class1:visited {
+                                background-color: #db4500;
+                                color: white;
+                            }
 
-  a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
-</style>
-<table cellpadding = 3 cellspacing = 0>
-<tr>
-  <td width: 70px>#</td>
-  <td>Problem</th>
-  <td>PMID</th>
-  <td>Link</th>
-  <td>Annotated By</th>
-  <td>Notes</th>
-</tr>
-"""
+                              a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
+                            </style>
+                            <table cellpadding = 3 cellspacing = 0>
+                            <tr>
+                              <td width: 70px>#</td>
+                              <td>Problem</th>
+                              <td>PMID</th>
+                              <td>Link</th>
+                              <td>Annotated By</th>
+                              <td>Notes</th>
+                            </tr>
+                            """
             URLList = []
             URLsUsed = []
             DOIDict = {}
@@ -342,249 +311,39 @@ def make_app(annos):
             file.close()
         return(returnStr)
 
-    @app.route('/dashboard/no-pmid')
-    def route_no_PMID():
-        file = open("no-pmid.txt")
-        returnStr = file.read()
-        file.close()
-        if returnStr == '':
-            h = 0
-            a = 0 
-            counter = 0
-            returnStr += """0 Problems:
-<html>
-<style type="text/css">
-  td {width: 300px; hight 40px}     
-  td {border: 1px solid #000000;}
-  a.class1:link {
-    background-color: #db4500;
-    color: white;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class2:visited, a.class2:link{
-    background-color: #fcff56;
-    color: black;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class1:visited {
-    background-color: #009cdb;
-    color: white;
-}
-
-  a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
-</style>
-<table cellpadding = 3 cellspacing = 0>
-<tr>
-  <td width: 70px>#</td>
-  <td>Problem</th>
-  <td>PMID</th>
-  <td>Link</th>
-  <td>Annotated By</th>
-  <td>Notes</th>
-</tr>
-"""
-            URLList = []
-            URLsUsed = []
-            DOIDict = {}
-            URLwDOI = {}
-            PMIDDict = {}
-            URLList.append('curation.scicrunch.com/paper/2')
-            URLList.append('curation.scicrunch.com/paper/1')
-            URLList.append('scicrunch.org/resources')
-            print("PROSSESING")
-            for h in Curation:
-                URL = BaseURL(h._anno)
-                if [t for t in h.tags if t.startswith("DOI")]:
-                    if not URL in URLsUsed:
-                        if h.doi not in DOIDict:
-                            DOIDict[h.doi] = []
-                        DOIDict[h.doi].append(URL)
-                        URLwDOI[URL] = h.doi
-                        URLsUsed.append(URL)
-                if [t for t in h.tags if t.startswith("PMID")]:
-                    PMID = [t.replace("PMID:", "") for t in h.tags if t.startswith("PMID")][0]
-                    if URL in URLsUsed:
-                        for k in range(0, len(DOIDict[URLwDOI[URL]])):
-                                PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
-                    else:
-                        PMIDDict[URL] = PMID
-
-                if URL in PMIDDict.keys():
-                    PMID = PMIDDict[URL]
-                elif not URL in URLList:
-                    counter += 1
-                    if URL in URLwDOI.keys():
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/?term='+URLwDOI[URL].replace("['","").replace("']","")+' class="class2" target="_blank"> PubMed </a>'
-                    else:
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/ class="class2" target="_blank"> PubMed </a>'
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>NO PMID</td><td>"+ PMID +"</td><td><a href=" + h._anno.uri + ' class="class1" target="_blank"> Paper Link </a></td><td>'+h._anno.user+"</td><td>""</td></tr>"
-                    URLList.append(URL)
-
-            returnStr += "</table></html>"
-            returnStr =  '<a href=/dashboard class="class2"> BACK </a><br>' + str(counter) + returnStr[1:]
-            file = open("no-pmid.txt", "w")
-            file.write(returnStr)
-            file.close()
-        return(returnStr)
-
     @app.route('/dashboard/table')
     def route_table():
-        def tag_string(c):
-            return ' '.join(sorted(t.replace('RRIDCUR:', '') for t in c.tags if 'RRIDCUR' in t))
+        rows = filter_rows(Curation.INCOR_TAG, 'RRIDCUR:Unresolved', 'RRIDCUR:Missing', *bad_tags)
+        return table_rows(rows, 'All SciBot curation problems')
 
-        rows = [(str(i + 1),
-                 tag_string(c),
-                 atag(PMID(c.pmid), c.pmid, new_tab=True)
-                 if c.pmid
-                 else (atag(DOI(c.doi), c.doi, new_tab=True) if c.doi else ''),
-                 atag(c.shareLink, 'Annotation', new_tab=True) if c else atag(c.uri, 'Paper', new_tab=True),
-                 c.user,
-                 c.text if c.user != 'scibot' and c.text else '')
-                for i, c in enumerate(sorted((c for c in Curation
-                                              if anyMembers(c.tags, c.INCOR_TAG, 'RRIDCUR:Missing', 'RRIDCUR:Unresolved', *bad_tags)),
-                                             key=tag_string
-                                            ))
-               ]
-        return htmldoc(navbar(),
-                       divtag(render_table(rows, '#', 'Problem', 'Identifier', 'Link', 'Curator', 'Notes'),
-                              cls='main'),
-                       title='All SciBot curation problems',
-                       styles=(table_style, navbar_style))
-
-    def fuckyou():
-        navheader = '<a href=/dashboard class="class2"> BACK </a><a href=/dashboard/anno-incorrect class="class2"> INCORRECT </a><a href=/dashboard/anno-missing class="class2"> MISSING </a><a href=/dashboard/anno-unresolved class="class2"> UNRESOLVED </a><a href=/dashboard/no-pmid class="class2"> NO PMID </a><a href=/dashboard/no-annos class="class2"> NO ANNOTATIONS </a><br>'
-
-        if returnStr == '':
-            h = 0
-            a = 0 
-            counter = 0
-
-            returnStr += """
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/loose.dtd">
-<html>
-    <head>
+        """
         <style type="text/css">
-td {width: 300px; hight 40px}     
-td {border: 1px solid #000000;}
-a.class1:link {
-    background-color: #aaaaff;
-    color: white;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class2:visited, a.class2:link{
-      background-color: #79c478;
+            td {width: 300px; hight 40px}     
+            td {border: 1px solid #000000;}
+            a.class1:link {
+                background-color: #aaaaff;
+                color: white;
+                padding: 14px 25px;
+                text-align: center;
+                text-decoration: none;
+                display: inline-block;
+            }
+              a.class2:visited, a.class2:link{
+                  background-color: #79c478;
 
-      color: black;
-      padding: 14px 25px;
-      text-align: center;
-      text-decoration: none;
-      display: inline-block;
-  }
-  a.class1:visited {
-      background-color: #009cdb;
-      color: white;
-  }
+                  color: black;
+                  padding: 14px 25px;
+                  text-align: center;
+                  text-decoration: none;
+                  display: inline-block;
+              }
+              a.class1:visited {
+                  background-color: #009cdb;
+                  color: white;
+              }
 
-  a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
-        </style>
-
-    </head>
-    <body>
-%s
-HACKHACK Problems:
-<table cellpadding = 3 cellspacing = 0>
-<tr>
-  <td width: 70px>#</td>
-  <td>Problem</td>
-  <td>PMID</td>
-  <td>Link</td>
-  <td>Annotated By</td>
-  <td>Notes</td>
-</tr>
-""" % navheader
-            URLList = []
-            URLsUsed = []
-            DOIDict = {}
-            URLwDOI = {}
-            PMIDDict = {}
-            URLList.append('curation.scicrunch.com/paper/2')
-            URLList.append('curation.scicrunch.com/paper/1')
-            URLList.append('scicrunch.org/resources')
-            print("PROSSESING")
-            for h in Curation:
-                URL = BaseURL(h._anno)
-                if [t for t in h.tags if t.startswith("DOI")]:
-                    if not URL in URLsUsed:
-                        DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                        if h.doi not in DOIDict:
-                            DOIDict[h.doi] = []
-                        DOIDict[h.doi].append(URL)
-                        URLwDOI[URL] = h.doi
-                        URLsUsed.append(URL)
-                k = 0
-                if [t for t in h.tags if t.startswith("PMID")]:
-                    PMID = [t.replace("PMID:", "") for t in h.tags if t.startswith("PMID")][0]
-                    if URL in URLsUsed:
-                        for k in range(0, len(DOIDict[URLwDOI[URL]])):
-                                PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
-                    else:
-                        PMIDDict[URL] = PMID
-            numDict = {}
-            for a in Curation._annos_list:
-                if BaseURL(a) in URLwDOI.keys():
-                    DOI = URLwDOI[BaseURL(a)]
-                    if not DOI in numDict.keys():
-                        numDict[DOI] = 1
-                    else:
-                        numDict[DOI] += 1
-            print(len(Curation._annos_list))
-            for h in Curation:
-                URL = BaseURL(h._anno)
-                if URL in PMIDDict.keys():
-                    PMID = PMIDDict[URL]
-                    PMID = f'<a href="https://www.ncbi.nlm.nih.gov/pubmed/{PMID}" class="class2" target="_blank">PMID:{PMID}</a>'
-                elif not URL in URLList:
-                    counter += 1
-                    if URL in URLwDOI.keys():
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/?term='+URLwDOI[URL].replace("['","").replace("']","")+' class="class2" target="_blank"> PubMed </a>'
-                    else:
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/ class="class2" target="_blank"> PubMed </a>'
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>NO PMID</td><td>"+ PMID +"</td><td><a href=" + h._anno.uri + ' class="class1" target="_blank"> Paper Link </a></td><td>'+h._anno.user+"</td><td>""</td></tr>"
-                    URLList.append(URL)
-#change tag to what you want to add to table:
-#                if [t for t in h.tags if "tag" in t and not "NoFurtherAction" in t and len(h.tags) == 1]:
-#                    counter += 1
-#                    returnStr += "<tr><td>"+str(counter)+"</td><td>PROBLEM</td><td>"+ PMID +"</td><td><a href=" + h.shareLink + ' class="class1" target="_blank"> Anno Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"</td></tr>"
-
-                if [t for t in h.tags if "Missing" in t and not "NoFurtherAction" in t and len(h.tags) == 1]:
-                    counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>MISSING</td><td>"+ PMID +"</td><td><a href=" + h.shareLink + ' class="class1" target="_blank"> Anno Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"</td></tr>"
-                if [t for t in h.tags if "Incorrect" in t and not "NoFurtherAction" in t and len(h.tags) == 1]:
-                    counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>INCORRECT</td><td>"+ PMID +"</td><td><a href=" + h.shareLink + ' class="class1" target="_blank"> Anno Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"</td></tr>"
-                if [t for t in h.tags if "Unresolved" in t and not "NoFurtherAction" in t and len(h.tags) == 1]:
-                    counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>UNRESOLVED</td><td>"+ PMID +"</td><td><a href=" + h.shareLink + ' class="class1" target="_blank"> Anno Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"</td></tr>"
-                if BaseURL(h._anno) in URLwDOI.keys():
-                    if numDict[URLwDOI[BaseURL(h._anno)]] < 3:
-                        counter += 1
-                        returnStr += "<tr><td>"+str(counter)+"</td><td>NO ANNOTATIONS</td><td>"+ PMID +"</td><td><a href=" + h._anno.uri + ' class="class1" target="_blank"> Paper Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"</td></tr>"
-            returnStr += "</table></html>"
-
-            returnStr = returnStr.replace('HACKHACK', str(counter))
-            file = open("table.txt", "w")
-            file.write(returnStr)
-            file.close()
-        return returnStr
+              a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
+        </style>"""
 
     @app.route('/dashboard/no-annos')
     def route_no_annos():
@@ -596,43 +355,43 @@ HACKHACK Problems:
             a = 0 
             counter = 0
             returnStr += """0 Problems:
-<html>
-<style type="text/css">
-  td {width: 300px; hight 40px}     
-  td {border: 1px solid #000000;}
-  a.class1:link {
-    background-color: #db4500;
-    color: white;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class2:visited, a.class2:link{
-    background-color: #fcff56;
-    color: black;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class1:visited {
-    background-color: #009cdb;
-    color: white;
-}
+                            <html>
+                            <style type="text/css">
+                              td {width: 300px; hight 40px}     
+                              td {border: 1px solid #000000;}
+                              a.class1:link {
+                                background-color: #db4500;
+                                color: white;
+                                padding: 14px 25px;
+                                text-align: center;
+                                text-decoration: none;
+                                display: inline-block;
+                            }
+                              a.class2:visited, a.class2:link{
+                                background-color: #fcff56;
+                                color: black;
+                                padding: 14px 25px;
+                                text-align: center;
+                                text-decoration: none;
+                                display: inline-block;
+                            }
+                              a.class1:visited {
+                                background-color: #009cdb;
+                                color: white;
+                            }
 
-  a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
-</style>
-<table cellpadding = 3 cellspacing = 0>
-<tr>
-  <td width: 70px>#</td>
-  <td>Problem</td>
-  <td>PMID</td>
-  <td>Link</td>
-  <td>Annotated By</td>
-  <td>Notes</td>
-</tr>
-"""
+                              a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
+                            </style>
+                            <table cellpadding = 3 cellspacing = 0>
+                            <tr>
+                              <td width: 70px>#</td>
+                              <td>Problem</td>
+                              <td>PMID</td>
+                              <td>Link</td>
+                              <td>Annotated By</td>
+                              <td>Notes</td>
+                            </tr>
+                            """
             URLList = []
             URLsUsed = []
             DOIDict = {}
@@ -693,271 +452,43 @@ HACKHACK Problems:
         return(returnStr)
 
 
-    @app.route('/dashboard/paper-list')
-    def route_Paper_List():
-        file = open("papers.txt","r")
-        paperStr = file.read()
-        file.close()
-        if paperStr == '':
-            h = 0
-            a = 0
-            PMIDList = []
-            DOIList = []
-            URLList = []
-            URLList.append('curation.scicrunch.com/paper/2')
-            URLList.append('curation.scicrunch.com/paper/1')
-            URLList.append('scicrunch.org/resources')
-            for a in Curation:
-                URL = BaseURL(Annos[a])
-                if URLDict[URL] < 3:
-                    URLList.append(URL)
-            counter = 0
-            ProbCounter = 0
-            paperStr += str(counter) + ' Results:<br>' + str(ProbCounter) + ' Papers with no PMID or DOI<br><br>'
-            print("PROSSESING")
-            for h in Curation:
-                if [t for t in h.tags if t.startswith("DOI")]:
-                    DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                    URL = BaseURL(h._anno)
-                    if not DOI in DOIList and not URL in URLList:
-                        paperStr += '<a href="' + h._anno.uri + '"> Paper Link </a><br>'
-                        paperStr += repr(h)
-                        paperStr += URL
-                        counter += 1
-                        if not DOI == '':
-                            DOIList.append(DOI)
-                        URLList.append(URL)
-                    elif not DOI in DOIList:
-                        if not DOI == '':
-                            DOIList.append(DOI)
-                    elif not URL in URLList:
-                        URLList.append(URL)
-                if [t for t in h.tags if t.startswith("PMID")]:
-                    PMID = [t.replace("PMID:", "") for t in h.tags if t.startswith("PMID")][0]
-                    URL = BaseURL(h._anno)
-                    if not PMID in PMIDList and not URL in URLList:
-                        paperStr += '<a href="' + h._anno.uri + '"> Paper Link </a><br>'
-                        paperStr += repr(h)
-                        paperStr += URL
-                        counter += 1
-                        if not PMID == '':
-                            PMIDList.append(PMID)
-                        URLList.append(URL)
-                    elif not PMID in PMIDList:
-                        if not PMID == '':
-                            PMIDList.append(PMID)
-                    elif not URL in URLList:
-                        URLList.append(URL)
-            for h in Curation:
-                URL = BaseURL(h._anno)
-                if not URL in URLList:
-                    paperStr += '<a href="' + h._anno.uri + '"> Paper Link </a><br>'
-                    paperStr += '<span	style="color:red">NO PMID OR DOI</span><br>'
-                    paperStr += repr(h)
-                    paperStr += URL
-                    counter += 1
-                    ProbCounter += 1
-                    URLList.append(URL)
-            paperStr = '<a href="/dashboard" class="class2"> BACK </a><br>' + str(counter) + paperStr[1:14] + str(ProbCounter) + paperStr[15:]
-            file = open("papers.txt", "w")
-            file.write(paperStr)
-            file.close()
-            return (paperStr)
-        else:	
-            return paperStr
+    @app.route('/dashboard/papers')
+    def route_papers():
+        rows = sorted(((atag(url, '...' + url[-20:]),
+                        nonestr(rrids.pmid),
+                        nonestr(rrids.doi),
+                        str(len(rrids)),
+                        str(len([a for r in rrids.values() for a in r])))
+                       for url, rrids in Curation._papers.items()),
+                      key=lambda r: int(r[3]),
+                      reverse=True)
+        return htmldoc(navbar(),
+                       divtag(render_table(rows, 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
+                              cls='main'),
+                       title='SciBot papers',
+                       styles=(table_style, navbar_style))
 
-    @app.route('/dashboard/anno-incorrect')
+    @app.route('/dashboard/no-pmid')
+    def route_no_pmid():
+        rows = no_pmid()
+        return htmldoc(navbar(),
+                       divtag(render_table(rows, 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
+                              cls='main'),
+                       title='SciBot papers',
+                       styles=(table_style, navbar_style))
+
+
+
+    @app.route('/dashboard/incorrect')
     def route_anno_incorrect():
-        file = open("incorrect.txt")
-        returnStr = file.read()
-        file.close()
-        if returnStr == '':
-            h = 0
-            a = 0 
-            counter = 0
-            returnStr += """0 Problems:
-<html>
-<style type="text/css">
-  td {width: 300px; hight 40px}     
-  td {border: 1px solid #000000;}
-  a.class1:link {
-    background-color: #db4500;
-    color: white;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class2:visited, a.class2:link{
-    background-color: #fcff56;
-    color: black;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class1:visited {
-    background-color: #009cdb;
-    color: white;
-}
+        rows = filter_rows(Curation.INCOR_TAG)
+        return table_rows(rows, 'Incorrect RRIDs')
 
-  a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
-</style>
-<table cellpadding = 3 cellspacing = 0>
-<tr>
-  <td width: 70px>#</td>
-  <td>Problem</th>
-  <td>PMID</th>
-  <td>Link</th>
-  <td>Annotated By</th>
-  <td>Notes</th>
-</tr>
-"""
-            URLList = []
-            URLsUsed = []
-            DOIDict = {}
-            URLwDOI = {}
-            PMIDDict = {}
-            URLList.append('curation.scicrunch.com/paper/2')
-            URLList.append('curation.scicrunch.com/paper/1')
-            URLList.append('scicrunch.org/resources')
-            print("PROSSESING")
-            for h in Curation:
-                if [t for t in h.tags if t.startswith("DOI")]:
-                    URL = BaseURL(h._anno)
-                    if not URL in URLsUsed:
-                        DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                        if not DOI in DOIDict.keys():
-                            DOIDict[DOI] = []
-                        DOIDict[DOI].append(URL)
-                        URLwDOI[URL] = DOI
-                        URLsUsed.append(URL)
-            for h in Curation:
-                k = 0
-                URL = BaseURL(h._anno)
-                if [t for t in h.tags if t.startswith("PMID")]:
-                    PMID = [t.replace("PMID:", "") for t in h.tags if t.startswith("PMID")][0]
-                    if URL in URLsUsed:
-                        for k in range(0, len(DOIDict[URLwDOI[URL]])):
-                                PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
-                    else:
-                        PMIDDict[URL] = PMID
-            print(len(Curation._annos_list))
-            for h in Curation:
-                URL = BaseURL(h._anno)
-                if URL in PMIDDict.keys():
-                    PMID = PMIDDict[URL]
-                elif not URL in URLList:
-                    if URL in URLwDOI.keys():
-                        PMID = '<a href="https://www.ncbi.nlm.nih.gov/pubmed/?term='+URLwDOI[URL].replace("['","").replace("']","")+'" class="class2" target="_blank"> PubMed </a>'
-                    else:
-                        PMID = '<a href="https://www.ncbi.nlm.nih.gov/pubmed/" class="class2" target="_blank"> PubMed </a>'
-                    URLList.append(URL)
-                if [t for t in h.tags if "Incorrect" in t and not "NoFurtherAction" in t and len(h.tags) == 1]:
-                    counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>INCORRECT</td><td>"+ PMID +"</td><td><a href=\"" + h.shareLink + '" class="class1" target="_blank"> Anno Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"</td></tr>"
-            returnStr += "</table></html>"
-            returnStr = '<a href="/dashboard" class="class2"> BACK </a><br>' + str(counter) + returnStr[1:]
-            file = open("incorrect.txt", "w")
-            file.write(returnStr)
-            file.close()
-        return(returnStr)
-    @app.route('/dashboard/anno-unresolved')
+    @app.route('/dashboard/unresolved')
     def route_anno_unresolved():
-        file = open("unresolved.txt")
-        returnStr = file.read()
-        file.close()
-        if returnStr == '':
-            h = 0
-            a = 0 
-            counter = 0
-            returnStr += """0 Problems:
-<html>
-<style type="text/css">
-  td {width: 300px; hight 40px}     
-  td {border: 1px solid #000000;}
-  a.class1:link {
-    background-color: #db4500;
-    color: white;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class2:visited, a.class2:link{
-    background-color: #fcff56;
-    color: black;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class1:visited {
-    background-color: #009cdb;
-    color: white;
-}
+        rows = filter_rows('RRIDCUR:Unresolved')
+        return table_rows(rows, 'Unresolved RRIDs')
 
-  a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
-</style>
-<table cellpadding = 3 cellspacing = 0>
-<tr>
-  <td width: 70px>#</td>
-  <td>Problem</th>
-  <td>PMID</th>
-  <td>Link</th>
-  <td>Annotated By</th>
-  <td>Notes</th>
-</tr>
-"""
-            URLList = []
-            URLsUsed = []
-            DOIDict = {}
-            URLwDOI = {}
-            PMIDDict = {}
-            URLList.append('curation.scicrunch.com/paper/2')
-            URLList.append('curation.scicrunch.com/paper/1')
-            URLList.append('scicrunch.org/resources')
-            print("PROSSESING")
-            for h in Curation:
-                if [t for t in h.tags if t.startswith("DOI")]:
-                    URL = BaseURL(h._anno)
-                    if not URL in URLsUsed:
-                        DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                        if not DOI in DOIDict.keys():
-                            DOIDict[DOI] = []
-                        DOIDict[DOI].append(URL)
-                        URLwDOI[URL] = DOI
-                        URLsUsed.append(URL)
-            for h in Curation:
-                k = 0
-                URL = BaseURL(h._anno)
-                if [t for t in h.tags if t.startswith("PMID")]:
-                    PMID = [t.replace("PMID:", "") for t in h.tags if t.startswith("PMID")][0]
-                    if URL in URLsUsed:
-                        for k in range(0, len(DOIDict[URLwDOI[URL]])):
-                                PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
-                    else:
-                        PMIDDict[URL] = PMID
-            print(len(Curation._annos_list))
-            for h in Curation:
-                URL = BaseURL(h._anno)
-                if URL in PMIDDict.keys():
-                    PMID = PMIDDict[URL]
-                elif not URL in URLList:
-                    if URL in URLwDOI.keys():
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/?term='+URLwDOI[URL].replace("['","").replace("']","")+' class="class2" target="_blank"> PubMed </a>'
-                    else:
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/ class="class2" target="_blank"> PubMed </a>'
-                    URLList.append(URL)
-                if [t for t in h.tags if "Unresolved" in t and not "NoFurtherAction" in t and len(h.tags) == 1]:
-                    counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>UNRESOLVEED</td><td>"+ PMID +"</td><td><a href=" + h.shareLink + ' class="class1" target="_blank"> Anno Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"</td></tr>"
-            returnStr += "</table></html>"
-            returnStr = '<a href=/dashboard class="class2"> BACK </a><br>' + str(counter) + returnStr[1:]
-            file = open("unresolved.txt", "w")
-            file.write(returnStr)
-            file.close()
-        return(returnStr)
     @app.route('/dashboard/results')
     def search_results(search):
         h = 0
@@ -1016,102 +547,10 @@ HACKHACK Problems:
             return search_results(search)
         return render_template('search.html', form=search)
 
-    @app.route('/dashboard/anno-missing', methods=('GET', 'POST'))
+    @app.route('/dashboard/missing', methods=('GET', 'POST'))
     def route_anno_missing():
-        file = open("missing.txt")
-        returnStr = file.read()
-        file.close()
-        if returnStr == '':
-            h = 0
-            a = 0 
-            counter = 0
-            returnStr += """0 Problems:
-<html>
-<style type="text/css">
-  td {width: 300px; hight 40px}     
-  td {border: 1px solid #000000;}
-  a.class1:link {
-    background-color: #db4500;
-    color: white;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class2:visited, a.class2:link{
-    background-color: #fcff56;
-    color: black;
-    padding: 14px 25px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-}
-  a.class1:visited {
-    background-color: #009cdb;
-    color: white;
-}
-
-  a.class1:hover, a.class1:active, a.class2:hover, a.class2:active {background-color: red;}
-</style>
-<table cellpadding = 3 cellspacing = 0>
-<tr>
-  <td width: 70px>#</td>
-  <td>Problem</th>
-  <td>PMID</th>
-  <td>Link</th>
-  <td>Annotated By</th>
-  <td>Notes</th>
-</tr>
-"""
-            URLList = []
-            URLsUsed = []
-            DOIDict = {}
-            URLwDOI = {}
-            PMIDDict = {}
-            URLList.append('curation.scicrunch.com/paper/2')
-            URLList.append('curation.scicrunch.com/paper/1')
-            URLList.append('scicrunch.org/resources')
-            print("PROSSESING")
-            for h in Curation:
-                if [t for t in h.tags if t.startswith("DOI")]:
-                    URL = BaseURL(h._anno)
-                    if not URL in URLsUsed:
-                        DOI = str([t for t in h.tags if t.startswith("DOI")]).replace("DOI:", "")
-                        if not DOI in DOIDict.keys():
-                            DOIDict[DOI] = []
-                        DOIDict[DOI].append(URL)
-                        URLwDOI[URL] = DOI
-                        URLsUsed.append(URL)
-            for h in Curation:
-                k = 0
-                URL = BaseURL(h._anno)
-                if [t for t in h.tags if t.startswith("PMID")]:
-                    PMID = [t.replace("PMID:", "") for t in h.tags if t.startswith("PMID")][0]
-                    if URL in URLsUsed:
-                        for k in range(0, len(DOIDict[URLwDOI[URL]])):
-                                PMIDDict[DOIDict[URLwDOI[URL]][k]] = PMID
-                    else:
-                        PMIDDict[URL] = PMID
-            print(len(Curation._annos_list))
-            for h in Curation:
-                URL = BaseURL(h._anno)
-                if URL in PMIDDict.keys():
-                    PMID = PMIDDict[URL]
-                elif not URL in URLList:
-                    if URL in URLwDOI.keys():
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/?term='+URLwDOI[URL].replace("['","").replace("']","")+' class="class2" target="_blank"> PubMed </a>'
-                    else:
-                        PMID = '<a href=https://www.ncbi.nlm.nih.gov/pubmed/ class="class2" target="_blank"> PubMed </a>'
-                    URLList.append(URL)
-                if [t for t in h.tags if "Missing" in t and not "NoFurtherAction" in t and len(h.tags) == 1]:
-                    counter += 1
-                    returnStr += "<tr><td>"+str(counter)+"</td><td>MISSING</td><td>"+ PMID +"</td><td><a href=" + h.shareLink + ' class="class1" target="_blank"> Anno Link </a></td><td>'+h._anno.user+"</td><td>"+h.text+"</td></tr>"
-            returnStr += "</table></html>"
-            returnStr = '<a href=/dashboard class="class2"> BACK </a><br>' + str(counter) + returnStr[1:]
-            file = open("missing.txt", "w")
-            file.write(returnStr)
-            file.close()
-        return(returnStr)
+        rows = filter_rows('RRIDCUR:Missing')
+        return table_rows(rows, 'Missing RRIDs')
 
     #new_function = route('/my/route')(route_base)
 
