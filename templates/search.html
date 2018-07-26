@@ -2,29 +2,35 @@
 <html>
     <head>
         <title>Search</title>
+        <style type="text/css">
+{{ navbar_style }}
+        </style>
     </head>
 
     <body>
-        <h2>Search</h2>
+        {{ navbar|safe }}
+        <div class="main">
+            <h2>Search</h2>
 
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-        <ul class=flashes>
-            {% for message in messages %}
-            <li>{{ message }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-        {% endwith %}
+            {% with messages = get_flashed_messages() %}
+            {% if messages %}
+            <ul class=flashes>
+                {% for message in messages %}
+                <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% endwith %}
 
-        {% from "_formhelpers.html" import render_field %}
-        <form method=post>
-            <dl>
-                {{ render_field(form.select) }}
-                <p>
-                {{ render_field(form.search) }}
-            </dl>
-            <p><input type=submit value=Search>
-        </form>
+            {% from "_formhelpers.html" import render_field %}
+            <form method=post>
+                <dl>
+                    {{ render_field(form.select) }}
+                    <p>
+                    {{ render_field(form.search) }}
+                </dl>
+                <p><input type=submit value=Search>
+            </form>
+        </div>
     </body>
 </html>
