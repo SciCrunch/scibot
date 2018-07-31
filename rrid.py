@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-# -*- coding: UTF-8 -*-
 from __future__ import print_function
 import requests, re, traceback, pyramid
 try:
-    from urllib.parse import urlencode
+    from urllib.parse import urlencode, quote
 except ImportError:
-    from urllib import urlencode
+    from urllib import urlencode, quote
 try:
     import urlparse
 except ImportError:  # python3
@@ -330,6 +329,15 @@ def existing_tags(target_uri, h):#, doi, text, h):
     return tags, unresolved_exacts
 
 def get_pmid(doi):  # TODO
+    url = f'https://www.ncbi.nlm.nih.gov/pubmed/?term={quote(doi)}&report=uilist&format=text'
+    body = requests.get(url).text
+    soup = BeautifulSoup(body, 'lxml')
+    matches = soup.find_all('pre')
+    if matches:
+        pmid = matches[0].get_text().strip()
+        if pmid:
+            print('got pmid from pubmed:', pmid)
+            return 'PMID:' + pmid
     params={'idtype':'auto', 'format':'json', 'Ids':doi, 'convert-button':'Convert'}
     pj = requests.post('https://www.ncbi.nlm.nih.gov/pmc/pmctopmid/', params=params).json()
     print(pj)

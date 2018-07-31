@@ -160,11 +160,13 @@ class KeyAccessor:
         return sorted(self._objects, key=lambda k: '0' if k is None else k)
 
     def values(self):
-        for v in self._objects.values():
+        for v in list(self._objects.values()):
             yield v
 
     def items(self):
-        for k, v in self._objects.items():
+        # we use list() here to simplify synchronization issues with the websocket
+        # since yield allows the thread to shift
+        for k, v in list(self._objects.items()):
             yield k, v
 
     def __iter__(self):
@@ -205,7 +207,7 @@ class RRIDs(KeyAccessor):
     def doi(self):
         if None in self._objects:
             for o in self._objects[None]:
-                if o._type == 'pagenote':  # FIXME some curators did these as annotations too...
+                if o._anno.is_page_note or o.user != 'scibot':  # FIXME some curators did these as annotations too...
                     for t in o.tags:
                         if t.startswith('DOI:'):
                             return t
@@ -246,6 +248,7 @@ class MultipleDOI(KeyAccessor):
 class RRIDSimple(KeyAccessor):
     prop = 'rrid'
     object_container_class = set
+
 
 class PMIDRRIDs(KeyAccessor):
     prop = 'pmid'
@@ -289,6 +292,8 @@ class RRIDAnno(HypothesisHelper):
     _annos = {}
     objects = {}
     _papers = None
+    _dois = None
+    _pmids = None
     _done_all = False
 
     def __init__(self, anno, annos):
@@ -298,6 +303,17 @@ class RRIDAnno(HypothesisHelper):
                 self.__class__._papers = Papers(self.objects.values())
             else:  # FIXME... this could fail...
                 self.__class__._papers.add(self)
+
+            if self._dois is None:
+                self.__class__._dois = SameDOI(self.objects.values())
+            else:  # FIXME... this could fail...
+                self.__class__._dois.add(self)
+
+            if self._pmids is None:
+                self.__class__._pmids = SamePMID(self.objects.values())
+            else:  # FIXME... this could fail...
+                self.__class__._pmids.add(self)
+
             self.__class__._done_all = True
 
     @mproperty
@@ -371,6 +387,34 @@ class RRIDAnno(HypothesisHelper):
     def paper(self):
         if self._done_loading:
             return self._papers[self.uri]
+
+    @property
+    def doi(self):
+        if self._papers:
+            doi = self.paper.doi
+            if doi:
+                self._doi_by_pmid = False
+                return doi
+
+        if self._pmids and self.paper.pmid and self.paper.pmid in self._pmids:
+            for paper in self._pmids[self.paper.pmid].values():
+                if paper.doi:
+                    self._doi_by_pmid = True
+                    return paper.doi
+
+    @property
+    def pmid(self):
+        if self._papers:
+            pmid = self.paper.pmid
+            if pmid:
+                self._pmid_by_doi = False
+                return pmid
+
+        if self._dois and self.paper.doi and self.paper.doi in self._dois:
+            for paper in self._dois[self.paper.doi].values():
+                if paper.pmid:
+                    self._pmid_by_doi = True
+                    return paper.pmid
 
     @property
     def _original_rrid(self):
@@ -611,6 +655,15 @@ class Curation(RRIDAnno):
                 #embed()
                 #raise BaseException('WHY ARE YOU GETTING CALLED MULTIPLE TIMES?')
             #self._do_papers()
+            #self.compute_stats()
+
+    @classmethod
+    def compute_stats(cls):
+        wrrids = list(c for c in cls if c.rrid)  # FIXME annos not replies
+        nodoi = set(c for c in wrrids if not c.doi)
+        nopmid = set(c for c in wrrids if not c.pmid)
+        noid = nodoi.intersection(nopmid)
+        cls.stats = dict(nodoi=nodoi, nopmid=nopmid, noid=noid)
 
     @classmethod
     def _fetch_xmls(cls, file=None):
@@ -703,16 +756,6 @@ class Curation(RRIDAnno):
             if not pc.startswith('(') and ' ' in pc:
                 pc = f'({pc})'
             return pc
-
-    @property
-    def doi(self):
-        if self._papers:
-            return self._papers[self.uri].doi
-
-    @property
-    def pmid(self):
-        if self._papers:
-            return self._papers[self.uri].pmid
 
     @property
     def public_id(self):

@@ -6,7 +6,7 @@ from scibot.rrid import PMID, DOI
 from scibot.export import bad_tags
 from pyontutils.utils import anyMembers
 from pyontutils.htmlfun import render_table, htmldoc, atag, divtag
-from pyontutils.htmlfun import table_style, navbar_style
+from pyontutils.htmlfun import table_style, navbar_style, cur_style
  
 from hyputils.subscribe import preFilter, AnnotationStream
 from hyputils.handlers import helperSyncHandler, filterHandler
@@ -60,12 +60,10 @@ def make_app(annos, pannos=[]):
     base_url = '/dashboard/'
     names = ['missing', 'incorrect', 'papers', 'unresolved',
              'no-pmid', 'no-doi', 'no-annos', 'table', 'Journals']
-    for name in names:
-        with open(f'{name}.txt','wt') as f:
-            f.write('')
 
     def tag_string(c):
-        return ' '.join(sorted(t.replace('RRIDCUR:', '') for t in c.tags if 'RRIDCUR' in t))
+        return ' '.join(sorted(t.replace('RRIDCUR:', '')
+                               for t in c.tags if 'RRIDCUR' in t))
 
     def filter_rows(*tags):
         if not tags:
@@ -85,7 +83,8 @@ def make_app(annos, pannos=[]):
                      c.user,
                      c.text if c.user != 'scibot' and c.text else '')
                     for i, c in enumerate(sorted((c for c in Curation
-                                                  if ff(c.tags)),
+                                                  if not c.corrected  # FIXME need a better way...
+                                                  and ff(c.tags)),
                                                  key=tag_string)))
     k = 0
     kList = []
@@ -96,7 +95,6 @@ def make_app(annos, pannos=[]):
         else:
             URLDict[BaseURL(h._anno)] = 1
             kList.append(k)
-
     class NavBar:
         def atag(self, route, name):
             if route == self.current_route:
@@ -113,7 +111,8 @@ def make_app(annos, pannos=[]):
                           self.atag('route_anno_missing', 'Missing'),
                           self.atag('route_no_pmid', 'No PMID'),
                           self.atag('route_no_doi', 'No DOI'),
-                          self.atag('route_no_annos', 'No annos'),
+                          self.atag('route_no_id', 'No ID'),
+                          #self.atag('route_no_annos', 'No annos'),
                           self.atag('route_table', 'All'),
                           self.atag('route_anno_search', 'Search'),
                           # TODO search box
@@ -130,32 +129,57 @@ def make_app(annos, pannos=[]):
                        divtag(render_table(rows, '#', 'Problem', 'Identifier', 'Link', 'Curator', 'Notes'),
                               cls='main'),
                        title=title,
-                       styles=(table_style, navbar_style))
+                       styles=(table_style, cur_style, navbar_style))
 
     def nonestr(thing):
         return '' if thing is None else thing
 
-    def papers(filter=lambda r:True):
+    def done_rrids(rrids):
+        for rrid, s in rrids.items():
+            for a in s:
+                if a.Validated:
+                    yield rrid
+                    break
+
+    def todo_rrids(rrids):
+        done = set(done_rrids(rrids))
+        for rrid in rrids:
+            if rrid not in done:
+                yield rrid
+
+    def render_papers(rows):
+        return divtag(render_table(rows,
+                                   '#', 'Paper', 'PMID', 'DOI',
+                                   'TODO', 'Done', 'RRIDs', 'Annotations'),
+                      cls='main')
+
+    def papers(filter=lambda a:True):
         return [(str(i + 1),) + t
                 for i, t in
-                enumerate(sorted(((atag(url, '...' + url[-20:]),
+                enumerate(sorted(((atag(url, '...' + url[-20:], new_tab=True),
                                    nonestr(rrids.pmid),
                                    '' if
                                    rrids.doi is None else
-                                   atag(DOI(rrids.doi), rrids.doi),
+                                   atag(DOI(rrids.doi), rrids.doi, new_tab=True),
+                                   str(len(list(todo_rrids(rrids)))),
+                                   str(len(list(done_rrids(rrids)))),
                                    str(len(rrids)),
                                    str(len([a for r in rrids.values()
                                             for a in r])))
-                                 for url, rrids in Curation._papers.items()
-                                 if filter(rrids)),
-                                 key=lambda r: int(r[4]),
+                                  for url, rrids in Curation._papers.items()
+                                  if filter(next(a for s in rrids.values()
+                                                  for a in s))),
+                                 key=lambda r: int(r[3]),
                                  reverse=True))]
 
     def no_pmid():
-        return papers(lambda r:r.pmid is None)
+        return papers(lambda a:a.pmid is None)
 
     def no_doi():
-        return papers(lambda r:r.doi is None)
+        return papers(lambda a:a.doi is None)
+
+    def no_id():
+        return papers(lambda a:a.doi is None and a.pmid is None)
 
     def no_annos():  # TODO
         return []
@@ -165,6 +189,7 @@ def make_app(annos, pannos=[]):
         return table_style, 200, {'Content-Type':'text/css'}
 
     @app.route('/dashboard', methods=('GET', 'POST'))
+    @app.route('/dashboard/', methods=('GET', 'POST'))
     def route_base():
         return render_template('main.html', method='get',
                                navbar=navbar(request.url_rule.endpoint),
@@ -176,6 +201,7 @@ def make_app(annos, pannos=[]):
                                npapers=str(len(Curation._papers)),
                                nnopmid=str(len(no_pmid())),
                                nnodoi=str(len(no_doi())),
+                               #nnoboth=str(len(no_both())),
                                #nnoannos=str(len(no_annos()))
                                nnoannos='??',
                                allp='??',)
@@ -188,7 +214,8 @@ def make_app(annos, pannos=[]):
     @app.route('/dashboard/anno-user/<user>')
     def route_anno_tags(user):
         print(user)
-        out = '\n'.join([f'{anno.user} {anno.text} {anno.tags}<br>' for anno in Curation._annos_list if anno.user == user])
+        out = '\n'.join([f'{anno.user} {anno.text} {anno.tags}<br>'
+                         for anno in Curation._annos_list if anno.user == user])
         return out
 
     @app.route('/dashboard/journals')
@@ -256,7 +283,7 @@ def make_app(annos, pannos=[]):
                        divtag(render_table(rows, '#', 'PMID', 'DOI', 'RRID'),
                                            cls='main'),
                        title='SciBot public release',
-                       styles=(table_style, navbar_style))
+                       styles=(table_style, cur_style, navbar_style))
 
     @app.route('/dashboard/table')
     def route_table():
@@ -304,28 +331,33 @@ def make_app(annos, pannos=[]):
     def route_papers():
         rows = papers()
         return htmldoc(navbar(request.url_rule.endpoint),
-                       divtag(render_table(rows, 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
-                              cls='main'),
+                       render_papers(rows),
                        title='SciBot papers',
-                       styles=(table_style, navbar_style))
+                       styles=(table_style, cur_style, navbar_style))
 
     @app.route('/dashboard/no-pmid')
     def route_no_pmid():
         rows = no_pmid()
         return htmldoc(navbar(request.url_rule.endpoint),
-                       divtag(render_table(rows, '#', 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
-                              cls='main'),
+                       render_papers(rows),
                        title='SciBot No PMID Papers',
-                       styles=(table_style, navbar_style))
+                       styles=(table_style, cur_style, navbar_style))
 
     @app.route('/dashboard/no-doi')
     def route_no_doi():
         rows = no_doi()
         return htmldoc(navbar(request.url_rule.endpoint),
-                       divtag(render_table(rows, '#', 'Paper', 'PMID', 'DOI', 'RRIDs', 'Annotations'),
-                              cls='main'),
+                       render_papers(rows),
                        title='SciBot No DOI Papers',
-                       styles=(table_style, navbar_style))
+                       styles=(table_style, cur_style, navbar_style))
+
+    @app.route('/dashboard/no-id')
+    def route_no_id():
+        rows = no_id()
+        return htmldoc(navbar(request.url_rule.endpoint),
+                       render_papers(rows),
+                       title='SciBot No ID Papers',
+                       styles=(table_style, cur_style, navbar_style))
 
     @app.route('/dashboard/incorrect')
     def route_anno_incorrect():
@@ -457,11 +489,13 @@ def annoSync(memfile, group, helpers=tuple(), world_ok=False):
     get_annos = Memoizer(memfile, api_token, username, group, 200000)
     yield get_annos
     prefilter = preFilter(groups=[group]).export()
-    helperSyncHandler.memoizer = get_annos
-    helperSyncHandler.helpers = helpers
+    hsh = type(f'helperSyncHandler{group}',
+               (helperSyncHandler,),
+               dict(memoizer=get_annos,
+                    helpers=helpers))
     annos = get_annos()
     yield annos
-    stream_loop = AnnotationStream(annos, prefilter, helperSyncHandler)()
+    stream_loop = AnnotationStream(annos, prefilter, hsh)()
     yield stream_loop
 
 def setup():
