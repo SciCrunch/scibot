@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.6
 from os import environ
 from forms import SearchForm
+from scibot.core import api_token, username, group, group_staging, memfile, pmemfile
 from scibot.release import Curation, PublicAnno
 from scibot.rrid import PMID, DOI
 from scibot.export import bad_tags
@@ -21,29 +22,6 @@ from wtforms import Form, StringField, SelectField
 bp = Blueprint('Search', __name__)
 
 print('END IMPORTS')
-
-api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
-username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
-group = environ.get('RRIDBOT_GROUP', '__world__')
-group_staging = environ.get('RRIDBOT_GROUP_STAGING', '__world__')
-print(api_token, username, group)  # sanity check
-
-READ_ONLY = True
-if group_staging == '__world__' and not READ_ONLY:
-    raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
-
-#memfile = '/tmp/real-scibot-annotations.pickle'
-if group.startswith('5'):
-    print('Real annos')
-    memfile = '/tmp/real-scibot-annotations.pickle'
-elif group.startswith('4'):
-    print('Test annos')
-    memfile = '/tmp/test-scibot-annotations.pickle'
-
-if group_staging == '__world__':
-    pmemfile = '/tmp/scibot-public-annos.pickle'
-else:
-    pmemfile = f'/tmp/scibot-{group_staging}-annos.pickle'
 
 def route(route_name):
     def wrapper(function):

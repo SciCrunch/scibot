@@ -10,25 +10,10 @@ import requests
 from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
-from scibot.export import api_token, username, group, group_staging, bad_tags, get_proper_citation
+from scibot.core import api_token, username, group, group_staging, memfile, pmemfile
+from scibot.export import bad_tags, get_proper_citation
 from scibot.rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
-
-READ_ONLY = True
-if group_staging == '__world__' and not READ_ONLY:
-    raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')
-
-if group.startswith('5'):
-    print('Real annos')
-    memfile = '/tmp/real-scibot-annotations.pickle'
-elif group.startswith('4'):
-    print('Test annos')
-    memfile = '/tmp/test-scibot-annotations.pickle'
-
-if group_staging == '__world__':
-    pmemfile = '/tmp/scibot-public-annos.pickle'
-else:
-    pmemfile = f'/tmp/scibot-{group_staging}-annos.pickle'
 
 get_annos = Memoizer(memfile, api_token, username, group, 200000)
 get_pannos = Memoizer(pmemfile, api_token, username, group_staging)

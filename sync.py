@@ -2,7 +2,7 @@
 
 from os import environ
 from curio import Channel, run
-syncword = environ.get('RRIDBOT_SYNC')
+from scibot.core import syncword
 chan = ('localhost', 12345)
 async def consumer():
     ch = Channel(chan)

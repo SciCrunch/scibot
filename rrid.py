@@ -22,15 +22,10 @@ from lxml import etree
 from curio import Channel, run
 from pyramid.response import Response
 from hyputils.hypothesis import HypothesisUtils
+from scibot.core import api_token, username, group, group2, syncword
 from scibot.export import export_impl, export_json_impl
 from IPython import embed
 from bs4 import BeautifulSoup
-
-api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API dev token
-username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
-group = environ.get('RRIDBOT_GROUP', '__world__')
-group2 = environ.get('RRIDBOT_GROUP2', '__world__')
-syncword = environ.get('RRIDBOT_SYNC')
 
 print(username, group, group2)  # sanity check
 
