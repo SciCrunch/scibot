@@ -330,6 +330,8 @@ def get_pmid(doi):  # TODO
     matches = soup.find_all('pre')
     if matches:
         pmid = matches[0].get_text().strip()
+        if '\n' in pmid:  # in the event that we get multiple PMIDs it means something is wrong
+            pmid = None
         if pmid:
             print('got pmid from pubmed:', pmid)
             return 'PMID:' + pmid
