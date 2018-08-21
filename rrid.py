@@ -324,7 +324,7 @@ def existing_tags(target_uri, h):#, doi, text, h):
     return tags, unresolved_exacts
 
 def get_pmid(doi):  # TODO
-    url = f'https://www.ncbi.nlm.nih.gov/pubmed/?term={quote(doi)}&report=uilist&format=text'
+    url = f'https://www.ncbi.nlm.nih.gov/pubmed/?term={quote(doi)}[Location ID]&report=uilist&format=text'
     body = requests.get(url).text
     soup = BeautifulSoup(body, 'lxml')
     matches = soup.find_all('pre')
