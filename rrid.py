@@ -271,7 +271,8 @@ def getDoi(*soups):
         ('a', 'class', 'S_C_ddDoi', 'href'),  # evilier
         ('a', 'id', 'ddDoi', 'href'),  # evilier
         ('meta', 'name', 'DC.identifier', 'content'),  # f1000 worst
-        ('meta', 'name', 'dc.Identifier', 'content', {'scheme':'doi'}),  # tandf
+        ('meta', 'name', 'dc.Identifier', 'content', {'scheme':'doi'})  # tandf
+        ('meta', 'name', 'dc.Source', 'content'),  # mit press jounals wat
     )
     for soup in soups:
         for args in argslist:
@@ -287,7 +288,7 @@ def getDoi(*soups):
 
 def getUri(uri, *soups):
     argslist = (
-        ('meta', 'property', 'og:url', 'content'),
+        ('meta', 'property', 'og:url', 'content'),  # FIXME mitpressjournals has an idiot in it somewhere
         ('link', 'rel', 'canonical', 'href'),
     )
     for soup in soups:

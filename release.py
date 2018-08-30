@@ -272,6 +272,7 @@ class RRIDAnno(HypothesisHelper):
     SUCCESS_TAG = 'RRIDCUR:Released'
     INCOR_TAG = 'RRIDCUR:Incorrect' 
     CORR_TAG = 'RRIDCUR:Corrected'
+    UNRES_TAG = 'RRIDCUR:Unresolved'
     VAL_TAG = 'RRIDCUR:Validated'
     skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
     _annos = {}
@@ -337,12 +338,28 @@ class RRIDAnno(HypothesisHelper):
         return out_tags
 
     @mproperty
+    def _Duplicate(self):
+        return 'RRIDCUR:Duplicate' in self._fixed_tags
+
+    @mproperty
+    def Duplicate(self):
+        return self.duplicates and self._Duplicate
+
+    @mproperty
     def _Incorrect(self):
         return self.INCOR_TAG in self._fixed_tags
 
     @mproperty
+    def Incorrect(self):
+        return self.INCOR_TAG in self.public_tags
+
+    @mproperty
     def _InsufficientMetadata(self):
         return 'RRIDCUR:InsufficientMetadata' in self._fixed_tags
+
+    @mproperty
+    def _IncorrectMetadata(self):
+        return 'RRIDCUR:IncorrectMetadata' in self._fixed_tags
 
     @mproperty
     def _Missing(self):
@@ -359,6 +376,14 @@ class RRIDAnno(HypothesisHelper):
     @mproperty
     def _Unrecognized(self):
         return 'RRIDCUR:Unrecognized' in self._fixed_tags
+
+    @mproperty
+    def _Unresolved(self):
+        return self.UNRES_TAG in self._tags  # scibot is a good tagger
+
+    @mproperty
+    def Unresolved(self):
+        return self._Unresolved and not self.validated_rrid
 
     @mproperty
     def _Validated(self):
@@ -422,7 +447,7 @@ class RRIDAnno(HypothesisHelper):
                 rrid = None
             else:
                 rrid = maybe[0]
-        elif 'RRIDCUR:Unresolved' in self._tags:  # scibot is a good tagger, ok to use _tags ^_^
+        elif self._Unresolved:
             if not self.exact.startswith('RRID:'):
                 rrid = 'RRID:' + self.exact
             else:
@@ -451,7 +476,7 @@ class RRIDAnno(HypothesisHelper):
                     rrid = None
                 else:
                     rrid = 'RRID:' + id_
-            elif self.exact and self._Incorrect and self.exact.startswith('AB_'):
+            elif self.exact and self._Incorrect and 'AB_' in self.exact:
                 rrid = 'RRID:' + self.exact
             else:
                 rrid = None
@@ -500,6 +525,19 @@ class RRIDAnno(HypothesisHelper):
             elif self.INCOR_TAG in rtags:
                 return None
             return rrid
+
+    @property
+    def validated_rrid(self):
+        if self.rrid:
+            if (self.Validated and self._original_rrid == self.rrid
+                or
+                self.corrected):
+                return self.rrid
+
+    @property
+    def normalized_rrid(self):
+        # TODO
+        raise NotImplemented
 
     @property
     def rridLink(self):
@@ -677,7 +715,7 @@ class Curation(RRIDAnno):
         if self._anno.user in self.skip_users:
             return False
         elif (self._type == 'annotation' and
-            self._fixed_tags):
+              self._fixed_tags):
             return True
         else:
             return False
@@ -692,6 +730,8 @@ class Curation(RRIDAnno):
 
     @property
     def isReleaseNode(self):
+        """ NOTE dedupe is handled elsewhere this are to mark all the duplicate
+            nodes so that they can have their text updated. """
         if self._InsufficientMetadata:
             return False
         elif self.NotRRID:
@@ -723,14 +763,98 @@ class Curation(RRIDAnno):
             return None
 
     @mproperty
-    def corrected(self):
+    def corrected(self):  # 863
+        """ # this doesn't work because IF there is exact then we cannot backtrack
+        return (self.done_loading and
+                self.rrid and (
+                    elf._original_rrid == self.rrid
+                    and self._Incorrect
+                    and (
+                        
+                    self.exact
+                        and self.rrid.strip('RRID:') not in self.exact
+                        or
+                        True
+                    )
+                    or
+                    self._original_rrid != self.rrid
+                    and self._original_rrid is not None))
+
+        """
         if self._done_loading and self.rrid is not None:
+            # the case where there a curator makes an annotation
+            # on an incorrect rrid and provides the correct rrid
+            # as a tag
             if self._original_rrid == self.rrid:
-                if self.exact and self._original_rrid:
-                    if self._Incorrect:
+                if self._Incorrect:
+                    if self.exact:
                         return self.rrid.strip('RRID:') not in self.exact
+                    elif self._type == 'reply':
+                        # FIXME the way the rest of the code is written this needs to return True
+                        # but it is actually incorrect, because replies can ALSO be corrected
+                        return True
+                    else:
+                        print(tc.red('we should never ge here RRIDCUR:Incorrect is being used incorrectly!'), self.id)
+            # the case where the original rrid from scibot has
+            # been replaced by a corrected rrid from a reply
+            # note the implicit rrid != _original_rrid
             elif self._original_rrid is not None:
                 return True
+
+    @mproperty
+    def found(self):
+        return (self._done_loading
+                and not self.corrected
+                and self._original_rrid is None
+                and self.rrid is not None)
+
+    def weird_type(self, type):
+        self._weird_type = type
+        return True
+
+    @mproperty
+    def weird(self):
+        """There are some weird combinations out there ..."""
+        return (self.isAstNode and not self.rrid and self.Validated
+                and self.weird_type('validated with no rrid')
+                or
+                self.found and not self.isAstNode
+                and self.weird_type('found but not ast node')
+                or
+                self.Validated and self._original_rrid and
+                self._original_rrid != self.rrid and not self.corrected
+                and self.weird_type('validated with a changed id but not corrected')
+                or
+                self.Validated and self.corrected
+                and self.weird_type('validated and corrected')
+        )
+
+    @mproperty
+    def bad_tag_logic(self):
+        ptags = self.public_tags
+        return (self._IncorrectMetadata and self._InsufficientMetadata
+                or not self.rrid and 'RRIDCUR:IncorrectMetadata' in ptags
+                # incorrect + incorrectmetadata no...
+        )
+
+    @mproperty
+    def broken(self):
+        return (not self.rrid and self.exact and 'RRID' in self.exact)
+
+    @mproperty
+    def very_bad(self):
+        """ Things that we want to release that don't have an RRID
+            lots of overlap with broken """
+        return self.isReleaseNode and not self.Duplicate and not self.rrid and self._type == 'annotation'
+
+    @mproperty
+    def strange_overlaps(self):
+        """ Make sure none of our strange properties overlap """
+        return (self.weird and self.broken
+                or
+                self.weird and self.bad_tag_logic
+                or
+                self.broken and self.bad_tag_logic)
 
     @mproperty
     def proper_citation(self):
@@ -969,6 +1093,15 @@ class Curation(RRIDAnno):
         start = '|' if depth else ''
         t = ' ' * 4 * depth + start
 
+        warning_text = (tc.ltyellow(f' {self._weird_type}') if self.weird else
+                        (tc.blue(' BROKEN') if self.broken else
+                         (tc.red(' BAD LOGIC') if self.bad_tag_logic else
+                          '')))
+        _class_name = f"{self.__class__.__name__ + ':':<14}"
+        class_name = (tc.ltyellow(_class_name) if self.weird else
+                      (tc.blue(_class_name) if self.broken else
+                       (tc.red(_class_name) if self.bad_tag_logic else 
+                       _class_name)))
         parent_id =  f"\n{t}parent_id:    {self.parent.id} {self.__class__.__name__}.byId('{self.parent.id}')" if self.parent else ''
         uri_text =   f'\n{t}uri:          {self.uri}' if self.uri else ''
         doi_text =   f'\n{t}doi:          {self.doi}' if self.doi else ''
@@ -1004,7 +1137,7 @@ class Curation(RRIDAnno):
                                                     for r in self.replies)
         replies_text = (f'\n{t}replies:{replies}' if self.reprReplies else rep_ids) if replies else ''
         return (f'\n{t.replace("|","")}*--------------------'
-                f"\n{t}{self.__class__.__name__ + ':':<14}{self.shareLink} {self.__class__.__name__}.byId('{self.id}')"
+                f"\n{t}{class_name}{self.shareLink} {self.__class__.__name__}.byId('{self.id}'){warning_text}"
                 f'\n{t}updated:      {self._anno.updated}'
                 f'\n{t}user:         {self._anno.user}'
                 f'\n{t}isAstNode:    {self.isAstNode}'

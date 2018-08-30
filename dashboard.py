@@ -5,7 +5,7 @@ from scibot.core import api_token, username, group, group_staging, memfile, pmem
 from scibot.release import Curation, PublicAnno
 from scibot.rrid import PMID, DOI
 from scibot.export import bad_tags
-from pyontutils.utils import anyMembers
+from pyontutils.utils import anyMembers, noneMembers
 from pyontutils.htmlfun import render_table, htmldoc, atag, divtag
 from pyontutils.htmlfun import table_style, navbar_style, cur_style
  
@@ -43,11 +43,7 @@ def make_app(annos, pannos=[]):
         return ' '.join(sorted(t.replace('RRIDCUR:', '')
                                for t in c.tags if 'RRIDCUR' in t))
 
-    def filter_rows(*tags):
-        if not tags:
-            ff = lambda t: True
-        else:
-            ff = lambda ltags: anyMembers(ltags, *tags)
+    def filter_rows(filter=lambda c: True):
         yield from ((str(i + 1),
                      tag_string(c),
                      atag(PMID(c.pmid), c.pmid, new_tab=True)
@@ -56,13 +52,17 @@ def make_app(annos, pannos=[]):
                            if c.doi
                            else ''),
                      atag(c.shareLink, 'Annotation', new_tab=True)
-                     if c
+                     if c  # FIXME how does this work?
                      else atag(c.uri, 'Paper', new_tab=True),
+                     atag(c.htmlLink, 'Anno HTML', new_tab=True),
                      c.user,
-                     c.text if c.user != 'scibot' and c.text else '')
+                     '\n'.join(c.curator_notes))
                     for i, c in enumerate(sorted((c for c in Curation
-                                                  if not c.corrected  # FIXME need a better way...
-                                                  and ff(c.tags)),
+                                                  if c.isAstNode
+                                                  and not c.Duplicate
+                                                  and not c.corrected  # FIXME need a better way...
+                                                  and not c.public_id
+                                                  and filter(c)),
                                                  key=tag_string)))
     k = 0
     kList = []
@@ -84,6 +84,7 @@ def make_app(annos, pannos=[]):
             self.current_route = route
             out =  divtag(self.atag('route_base', 'Home'),
                           self.atag('route_papers', 'Papers'),
+                          self.atag('route_anno_help_needed', 'Help Needed'),
                           self.atag('route_anno_incorrect', 'Incorrect'),
                           self.atag('route_anno_unresolved', 'Unresolved'),
                           self.atag('route_anno_missing', 'Missing'),
@@ -104,7 +105,7 @@ def make_app(annos, pannos=[]):
 
     def table_rows(rows, title, route):
         return htmldoc(navbar(route),
-                       divtag(render_table(rows, '#', 'Problem', 'Identifier', 'Link', 'Curator', 'Notes'),
+                       divtag(render_table(rows, '#', 'Problem', 'Identifier', 'Link', 'HTML Link', 'Curator', 'Notes'),
                               cls='main'),
                        title=title,
                        styles=(table_style, cur_style, navbar_style))
@@ -265,7 +266,7 @@ def make_app(annos, pannos=[]):
 
     @app.route('/dashboard/table')
     def route_table():
-        rows = filter_rows(Curation.INCOR_TAG, 'RRIDCUR:Unresolved', 'RRIDCUR:Missing', *bad_tags)
+        rows = filter_rows(lambda c: c.very_bad or c._Missing and not c.rrid or c.Incorrect or c.Unresolved)
         return table_rows(rows, 'All SciBot curation problems', request.url_rule.endpoint)
 
         """
@@ -337,15 +338,32 @@ def make_app(annos, pannos=[]):
                        title='SciBot No ID Papers',
                        styles=(table_style, cur_style, navbar_style))
 
+    @app.route('/dashboard/help-needed')
+    def route_anno_help_needed():
+        rows = filter_rows(lambda c: c.very_bad)
+
+        return table_rows(rows, 'Help needed RRIDs', request.url_rule.endpoint)
+
     @app.route('/dashboard/incorrect')
     def route_anno_incorrect():
-        rows = filter_rows(Curation.INCOR_TAG)
+        rows = filter_rows(lambda c: not c.very_bad and c.Incorrect)
         return table_rows(rows, 'Incorrect RRIDs', request.url_rule.endpoint)
 
     @app.route('/dashboard/unresolved')
     def route_anno_unresolved():
-        rows = filter_rows('RRIDCUR:Unresolved')
+        rows = filter_rows(lambda c: c.Unresolved and not c.very_bad and not c.Incorrect)
+
         return table_rows(rows, 'Unresolved RRIDs', request.url_rule.endpoint)
+
+    @app.route('/dashboard/missing', methods=('GET', 'POST'))
+    def route_anno_missing():
+        rows = filter_rows(lambda c: c._Missing and not c.rrid)
+        return table_rows(rows, 'Missing RRIDs', request.url_rule.endpoint)
+
+    @app.route('/dashboard/no-replies')
+    def route_no_replies():
+        # this should be the table with no replies
+        return 'TODO'
 
     @app.route('/dashboard/results')
     def search_results(search):
@@ -408,11 +426,6 @@ def make_app(annos, pannos=[]):
                                navbar=navbar(request.url_rule.endpoint),
                                navbar_style=navbar_style,
                               )
-
-    @app.route('/dashboard/missing', methods=('GET', 'POST'))
-    def route_anno_missing():
-        rows = filter_rows('RRIDCUR:Missing')
-        return table_rows(rows, 'Missing RRIDs', request.url_rule.endpoint)
 
     #new_function = route('/my/route')(route_base)
 
@@ -496,7 +509,7 @@ def main():
     app.secret_key = 'super secret key'
     app.config['SESSION_TYPE'] = 'filesystem'
     print(app.view_functions)
-    app.debug = True
+    app.debug = False
     app.run(host='localhost', port=8080)
 
 if __name__ == '__main__':
