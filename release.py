@@ -276,6 +276,7 @@ class RRIDAnno(HypothesisHelper):
     VAL_TAG = 'RRIDCUR:Validated'
     skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
     _annos = {}
+    _replies = {}
     objects = {}
     _papers = None
     _dois = None
