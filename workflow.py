@@ -137,6 +137,7 @@ def test():
 
 def main():
     from pathlib import Path
+    from rdflib import URIRef
     from IPython import embed
     from pyontutils.core import makeGraph
     import pyontutils.graphml_to_ttl as gt
@@ -258,17 +259,17 @@ def main():
                                    getInitiatesAction(node, g)):
             for pchain in getActionChains(parent_action, g):  # NOTE may also be a tag...
                 out = parent_action, *pchain
-                print(tuple(hg.qname(o) for o in out))
+                #print(tuple(hg.qname(o) for o in out))
                 yield out
 
         if not parent_action:
             yield tuple()
 
-    endpoint_chains = {hg.qname(endpoint):[[hg.qname(endpoint)] + [hg.qname(e) for e in chain]
-                                           for chain in getActionChains(endpoint, cgraph)]
-                       for endpoint in endpoints}
+    _endpoint_chains = {hg.qname(endpoint):[[hg.qname(endpoint)] + [hg.qname(e) for e in chain]
+                                            for chain in getActionChains(endpoint, cgraph)]
+                        for endpoint in endpoints}
 
-    print([hg.qname(e) for e in endpoints])
+    #print([hg.qname(e) for e in endpoints])
     #print([print([hg.qname(c) for c in getActionChains(endpoint, cgraph) if c])
            #for endpoint in endpoints
            #if endpoint])
@@ -285,24 +286,78 @@ def main():
                     for c in cgraph.transitiveClosure(getPreviousTag, terminal)]
                    for terminal in terminals}
 
-    terminal_chains = {hg.qname(terminal):[[hg.qname(terminal)] + [hg.qname(e) for e in chain]
-                                           for chain in getTagChains(terminal, cgraph)]
-                       for terminal in terminals}
+    def make_chains(things, getChains):
+        return {thing:[[thing] + [e for e in chain]
+                          for chain in getChains(thing, cgraph)]
+                for thing in things}
+
+    endpoint_chains = make_chains(endpoints, getActionChains)
+    terminal_chains = make_chains(terminals, getTagChains)
 
     def print_chains(thing_chains):
         print('\nstart from beginning')
-        print('\n'.join(sorted(' -> '.join(reversed(chain))
-                            for chains in thing_chains.values()
-                            for chain in chains)))
+
+        print('\n'.join(sorted(' -> '.join(hg.qname(e) for e in reversed(chain))
+                               for chains in thing_chains.values()
+                               for chain in chains)))
 
         print('\nstart from end')
 
-        print('\n'.join(sorted(' <- '.join(chain)
-                            for chains in thing_chains.values()
-                            for chain in chains)))
+        print('\n'.join(sorted(' <- '.join(hg.qname(e) for e in chain)
+                               for chains in thing_chains.values()
+                               for chain in chains)))
 
     print_chains(terminal_chains)
     print_chains(endpoint_chains)
+
+    def printq(*things):
+        print(*(hg.qname(t) for t in things))
+
+    from pprint import pprint
+    def get_linkers(s, o, g, linkerFunc):  # FIXME not right
+        yield from g[s::o]
+        for l in linkerFunc(o, g):
+            for p in g[s::l]:
+                yield p
+        return 
+        linkers = set(l for l in g.transitiveClosure(linkerFunc, o))
+        for p, o in g[s::]:
+            if o in linkers:
+                yield p
+
+    def edge_to_symbol(p, rev=False):
+        return '<=' if rev else '=>'  # TODO per type
+
+    def chain_to_typed_chain(chain, g, func):
+        # duh...
+        #pprint(chain)
+        for s, o in zip(chain, chain[1:]):
+            # TODO deal with reversed case
+            p = None
+            print(s, o)
+            printq(s, o)
+            for p in get_linkers(s, o, g, func):
+                #print(p)
+                yield from (s, edge_to_symbol(p), o)
+
+            if not p:
+                for rp in get_linkers(o, s, g, func):
+                    yield from (s, edge_to_symbol(rp, rev=True), o)
+
+    def tchains(thing_chains, func):
+        return sorted([hg.qname(e) if isinstance(e, URIRef) else e
+                       for e in chain_to_typed_chain(list(reversed(chain)), cgraph, func)]
+                      for chains in thing_chains.values()
+                      for chain in chains)
+
+    ttc = tchains(terminal_chains)
+    tec = tchains(endpoint_chains)
+    print(ttc)
+    print(tec)
+
+    #[print(wat) for wat in terminal_chains.values()]
+    #pprint(terminal_chains)
+    embed()
     return
 
     # 1 reduce everything to updated user tag triples
