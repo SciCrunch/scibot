@@ -165,13 +165,22 @@ def main():
     tag_types = set(cgraph.transitive_subjects(rdfs.subClassOf, wf.tag))
     has_tag_types = set(cgraph.transitive_subjects(rdfs.subPropertyOf, wf.hasTagOrReplyTag))
     has_tag_types.add(wf.hasOutputTag)
+    has_next_action_types = set(cgraph.transitive_subjects(rdfs.subPropertyOf, wf.hasOutput))
+    has_next_action_types.add(wf.hasNextStep)
 
     terminals = sorted(tag
                        for ttype in tag_types
+                       if ttype != wf.tagScibot  # scibot is not 'terminal' for this part
                        for tag in cgraph[:rdf.type:ttype]
                        if not isinstance(tag, BNode)
                        and not any(o for httype in has_tag_types
                                    for o in cgraph[tag:httype]))
+
+    endpoints = sorted(endpoint
+                       for endpoint in cgraph[:rdf.type:wf.state]
+                       if not isinstance(endpoint, BNode)
+                       and not any(o for hnatype in has_next_action_types
+                                   for o in cgraph[endpoint:hnatype]))
 
     complicated = sorted(a_given_tag
                  for tt in tag_types
@@ -217,44 +226,84 @@ def main():
                 for parent_tag, _ in g[::linker]:
                     yield parent_tag
 
-    def getPrevious(node, g):  # not quite what we need
+    def getPreviousTag(node, g):  # not quite what we need
         yield from getIsOneOfTagOf(node, g)
         yield from getIsTagOf(node, g)
 
-    def getChains(node, g):
+    def getTagChains(node, g):
         parent_tag = None
-        for parent_tag in chain(getIsOneOfTagOf(node, g), getIsTagOf(node, g)):
-            for pchain in getChains(parent_tag, g):
+        for parent_tag in chain(getIsOneOfTagOf(node, g),
+                                getIsTagOf(node, g)):
+            for pchain in getTagChains(parent_tag, g):
                 out = parent_tag, *pchain
                 yield out
 
         if not parent_tag:
             yield tuple()
 
+    def getInitiatesAction(node, g):
+        for action in g[:wf.initiatesAction:node]:
+            yield action
 
-    wat = cgraph.transitiveClosure(getPrevious, RRIDCUR.Duplicate)
+    def getIsOneOfOutputOf(node, g):
+        for list_top in getLists(node, g):
+            for linker in g[:owl.oneOf:list_top]:
+                for hot in has_next_action_types:
+                    for parent_thing  in g[:hot:linker]:
+                        yield parent_thing
+
+    def getActionChains(node, g):
+        parent_action = None
+        for parent_action in chain(getIsOneOfOutputOf(node, g),  # works for actions too
+                                   getInitiatesAction(node, g)):
+            for pchain in getActionChains(parent_action, g):  # NOTE may also be a tag...
+                out = parent_action, *pchain
+                print(tuple(hg.qname(o) for o in out))
+                yield out
+
+        if not parent_action:
+            yield tuple()
+
+    endpoint_chains = {hg.qname(endpoint):[[hg.qname(endpoint)] + [hg.qname(e) for e in chain]
+                                           for chain in getActionChains(endpoint, cgraph)]
+                       for endpoint in endpoints}
+
+    print([hg.qname(e) for e in endpoints])
+    #print([print([hg.qname(c) for c in getActionChains(endpoint, cgraph) if c])
+           #for endpoint in endpoints
+           #if endpoint])
+
+    #_ = [print(list(getActionChains(e, cgraph)) for e in endpoints)]
+    #return
+
+    wat = cgraph.transitiveClosure(getPreviousTag, RRIDCUR.Duplicate)
     wat = list(wat)
     #def invOneOf(tag, g):
 
     fake_chains = {hg.qname(terminal):
                    [hg.qname(c)
-                    for c in cgraph.transitiveClosure(getPrevious, terminal)]
+                    for c in cgraph.transitiveClosure(getPreviousTag, terminal)]
                    for terminal in terminals}
 
     terminal_chains = {hg.qname(terminal):[[hg.qname(terminal)] + [hg.qname(e) for e in chain]
-                                           for chain in getChains(terminal, cgraph)]
+                                           for chain in getTagChains(terminal, cgraph)]
                        for terminal in terminals}
 
-    print('\nstart from beginning')
-    print('\n'.join(sorted(' -> '.join(reversed(chain))
-                           for chains in terminal_chains.values()
-                           for chain in chains)))
+    def print_chains(thing_chains):
+        print('\nstart from beginning')
+        print('\n'.join(sorted(' -> '.join(reversed(chain))
+                            for chains in thing_chains.values()
+                            for chain in chains)))
 
-    print('\nstart from end')
+        print('\nstart from end')
 
-    print('\n'.join(sorted(' <- '.join(chain)
-                           for chains in terminal_chains.values()
-                           for chain in chains)))
+        print('\n'.join(sorted(' <- '.join(chain)
+                            for chains in thing_chains.values()
+                            for chain in chains)))
+
+    print_chains(terminal_chains)
+    print_chains(endpoint_chains)
+    return
 
     # 1 reduce everything to updated user tag triples
     # for curators take only the latest reply WITH TAGS
