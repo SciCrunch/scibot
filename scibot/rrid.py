@@ -26,6 +26,7 @@ import gzip
 import json
 import pprint
 from typing import Callable, Iterable, Tuple, Any, Generator
+from pathlib import Path
 from lxml import etree
 from curio import Channel, run
 from pyramid.response import Response
@@ -510,7 +511,7 @@ def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
            'body':body,
            'text':text,
           }
-    fname = 'logs/' + 'rrid-%s.json' % now
+    fname = (Path(__file__).parent.parent / 'logs' / f'rrid-{now}.json').as_posix()
     with open(fname, 'wt') as f:
         json.dump(log, f, sort_keys=True, indent=4)
 
