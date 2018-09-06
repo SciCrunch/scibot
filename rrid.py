@@ -271,7 +271,7 @@ def getDoi(*soups):
         ('a', 'class', 'S_C_ddDoi', 'href'),  # evilier
         ('a', 'id', 'ddDoi', 'href'),  # evilier
         ('meta', 'name', 'DC.identifier', 'content'),  # f1000 worst
-        ('meta', 'name', 'dc.Identifier', 'content', {'scheme':'doi'})  # tandf
+        ('meta', 'name', 'dc.Identifier', 'content', {'scheme':'doi'}),  # tandf
         ('meta', 'name', 'dc.Source', 'content'),  # mit press jounals wat
     )
     for soup in soups:
@@ -431,8 +431,10 @@ def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
             r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
             print('ERROR, rrid unresolved')
         else:
-            data_elements = root.findall('data')[0]
             s = ''
+            title = root.findall('title')[0].text
+            s += f'Title: {title}\n'
+            data_elements = root.findall('data')[0]
             data_elements = [(e.find('name').text, e.find('value').text) for e in data_elements]  # these shouldn't duplicate
             citation = [(n, v) for n, v in  data_elements if n == 'Proper Citation']
             name = [(n, v) for n, v in  data_elements if n == 'Name']
