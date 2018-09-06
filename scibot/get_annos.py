@@ -9,10 +9,10 @@ from hyputils.hypothesis import HypothesisUtils
 def main():
     TODAY = date.isoformat(date.today())
 
-    api_token = environ.get('RRIDBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
-    username = environ.get('RRIDBOT_USERNAME', 'USERNAME') # Hypothesis username
-    group = environ.get('RRIDBOT_GROUP', '__world__')
-    group_staging = environ.get('RRIDBOT_GROUP_STAGING', '__world__')
+    api_token = environ.get('SCIBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
+    username = environ.get('SCIBOT_USERNAME', 'USERNAME') # Hypothesis username
+    group = environ.get('SCIBOT_GROUP', '__world__')
+    group_staging = environ.get('SCIBOT_GROUP_STAGING', '__world__')
 
     m = hashlib.sha256()
     m.update(group.encode())

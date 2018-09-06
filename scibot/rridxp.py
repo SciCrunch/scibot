@@ -16,12 +16,12 @@ Options:
 
 # Run these commands (with variables filled in) to retrieve the data
 #  the first run may take ~30mins to synchronize all annotations
-# export RRIDBOT_USERNAME=scibot
-# export RRIDBOT_GROUP=${SCIBOT_CURATION_GROUP}
-# export RRIDBOT_GROUP2=${SCIBOT_CURATION_GROUP}
-# export RRIDBOT_GROUP_STAGING=__world__
-# export RRIDBOT_API_TOKEN=${SCIBOT_API_TOKEN}
-# export RRIDBOT_SYNC=$(head -c 100 /dev/urandom | tr -dc 'a-zA-Z0-9')
+# export SCIBOT_USERNAME=scibot
+# export SCIBOT_GROUP=${SCIBOT_CURATION_GROUP}
+# export SCIBOT_GROUP2=${SCIBOT_CURATION_GROUP}
+# export SCIBOT_GROUP_STAGING=__world__
+# export SCIBOT_API_TOKEN=${SCIBOT_API_TOKEN}
+# export SCIBOT_SYNC=$(head -c 100 /dev/urandom | tr -dc 'a-zA-Z0-9')
 
 import csv
 import json

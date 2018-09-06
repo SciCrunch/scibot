@@ -12,7 +12,7 @@ from curio import Channel, run
 from scibot.core import syncword
 
 if syncword is None:
-    raise KeyError('Please set the RRIDBOT_SYNC environment variable')
+    raise KeyError('Please set the SCIBOT_SYNC environment variable')
 
 async def consumer(chan):
     ch = Channel(chan)
