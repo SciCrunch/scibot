@@ -8,7 +8,6 @@ Options:
     -p --port=PORT       the port that the service should run on [default: 12345]
 """
 
-from os import environ
 from curio import Channel, run
 from scibot.core import syncword
 
@@ -46,6 +45,8 @@ async def consumer(chan):
         print(myset)
 
 def main():
+    import os
+    os.sys.stdout.write(f'\x1b]2;{os.path.basename(__file__)}\x07\n')
     from docopt import docopt
     args = docopt(__doc__)
     chan = ('localhost', int(args['--port']))
