@@ -1,5 +1,7 @@
 #!/usr/bin/env python3.6
 from os import environ
+from pathlib import Path
+from jinja2 import ChoiceLoader, FileSystemLoader
 from scibot.core import api_token, username, group, group_staging, memfile, pmemfile
 from scibot.release import Curation, PublicAnno
 from scibot.rrid import PMID, DOI
@@ -25,7 +27,13 @@ def route(route_name):
     return wrapper
 
 def make_app(annos, pannos=[]):
+
     app = Flask('scibot dashboard')
+
+    template_loader = ChoiceLoader([app.jinja_loader,
+                                    FileSystemLoader([(Path(__file__).parent.parent / 'templates').as_posix()])])
+    app.jinja_loader = template_loader
+
     [Curation(a, annos) for a in annos]
     [PublicAnno(a, pannos) for a in pannos]
     base_url = '/dashboard/'
@@ -86,7 +94,6 @@ def make_app(annos, pannos=[]):
                           self.atag('route_no_id', 'No ID'),
                           #self.atag('route_no_annos', 'No annos'),
                           self.atag('route_table', 'All'),
-                          self.atag('route_anno_search', 'Search'),
                           # TODO search box
                           atag('https://github.com/SciCrunch/scibot/issues',
                                'GitHub issues', new_tab=True),
