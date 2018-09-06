@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""SciBot server implementation
+
+Usage:
+    rrid.py [options]
+
+Options:
+    -s --sync-port=PORT         the port that the sync services is running on
+"""
 from __future__ import print_function
 import requests, re, traceback, pyramid
 try:
@@ -85,8 +93,7 @@ prefix_lookup = {k:v for k, v in prefixes}
 prefix_lookup['CVCL'] = 'CVCL'  # ah special cases
 
 # synchronization setup
-async def producer():
-    chan = ('localhost', 12345)
+async def producer(chan):
     ch = Channel(chan)
     try:
         c = await ch.connect(authkey=syncword.encode())
@@ -541,7 +548,24 @@ def main(local=False):#, lock=None, urls=None):
     from wsgiref.simple_server import make_server
     from pyramid.config import Configurator
 
-    send = run(producer)
+    from scibot.sync import __doc__ as sync__doc__
+    from docopt import docopt, parse_defaults
+    _sdefaults = {o.name:o.value if o.argcount else None for o in parse_defaults(sync__doc__)}
+    _backup_sync_port = int(_sdefaults['--port'])
+
+    if __name__ == '__main__':
+        args = docopt(__doc__)
+        _sync_port = int(args['--sync-port'])
+
+        if _sync_port:
+            sync_port = _sync_port
+        else:
+            sync_port = _backup_sync_port
+    else:
+        sync_port = _backup_sync_port
+
+    chan = 'localhost', sync_port
+    send = run(producer, chan)
     URL_LOCK = Locker(send)
 
     def rrid(request):
@@ -656,55 +680,6 @@ def main(local=False):#, lock=None, urls=None):
         server.socket = ssl.wrap_socket(server.socket, keyfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.key', certfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.crt', server_side=True)
         server.serve_forever()
 
-def _main(local=False):
-    from time import sleep
-    from curio import Channel, run
-    from pyramid.config import Configurator
-
-    async def producer():
-        chan = ('localhost', 12345)
-        ch = Channel(chan)
-        c = await ch.connect(authkey=b'hello')
-        async def send(uri):
-            await c.send(uri)
-            resp = await c.recv()
-            #await c.close()
-            print(resp, uri)
-            return resp
-        return send
-
-    send = run(producer)
-    print('we are ready')  # for some reason this only runs once
-    uri1 = 'http://testing.org/1'
-    uri2 = 'http://testing.org/2'
-    def testing(request):
-        val = run(send, 'add ' + uri1)
-        print(val)
-        if val:
-            print('### EARLY EXIT')
-            return Response('ALREADY RUNNING 1')
-        else:
-            sleep(2)
-            val = run(send, 'del ' + uri1)
-        return Response('aaaaaaaaaaa')
-
-    def testing2(request):
-        val = run(send, 'add ' + uri2)
-        print(val)
-        if val:
-            print('### EARLY EXIT')
-            return Response('ALREADY RUNNING 2')
-        else:
-            sleep(2)
-            val = run(send, 'del ' + uri2)
-        return Response('bbbbbbbbbbb')
-
-    config = Configurator()
-    config.add_route('testing', '/testing')
-    config.add_view(testing, route_name='testing')
-    config.add_route('testing2', '/testing2')
-    config.add_view(testing2, route_name='testing2')
-    return config.make_wsgi_app()
 
 if __name__ == '__main__':
     main(local=True)

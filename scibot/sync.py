@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Run the scibot sync service
+
+Usage:
+    scibot-sync [options]
+
+Options:
+    -p --port=PORT       the port that the service should run on [default: 12345]
+"""
 
 from os import environ
 from curio import Channel, run
@@ -38,7 +46,9 @@ async def consumer(chan):
         print(myset)
 
 def main():
-    chan = ('localhost', 12345)
+    from docopt import docopt
+    args = docopt(__doc__)
+    chan = ('localhost', int(args['--port']))
     run(consumer, chan)
 
 if __name__ == '__main__':

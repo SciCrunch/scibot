@@ -1,6 +1,5 @@
 #!/usr/bin/env python3.6
 from os import environ
-from forms import SearchForm
 from scibot.core import api_token, username, group, group_staging, memfile, pmemfile
 from scibot.release import Curation, PublicAnno
 from scibot.rrid import PMID, DOI
@@ -12,14 +11,8 @@ from pyontutils.htmlfun import table_style, navbar_style, cur_style
 from hyputils.subscribe import preFilter, AnnotationStream
 from hyputils.handlers import helperSyncHandler, filterHandler
 from hyputils.hypothesis import Memoizer
-from flask import Flask
-from flask import (
-    Blueprint, flash, g, redirect, render_template, request, session, url_for
-)
-from werkzeug.security import check_password_hash, generate_password_hash
+from flask import Flask, render_template, request, url_for
 from IPython import embed
-from wtforms import Form, StringField, SelectField
-bp = Blueprint('Search', __name__)
 
 print('END IMPORTS')
 
@@ -415,17 +408,6 @@ def make_app(annos, pannos=[]):
             return (str(counter) + ' Results:<br><br>' + hstr)
         else:
             return search_text(search.data['select'], Curation._annos_list, list(Curation), search.data['search'])
-
-    @app.route('/dashboard/anno-search', methods=('GET', 'POST'))
-    def route_anno_search():
-        search = SearchForm(request.form)
-        if request.method == 'POST':
-            return search_results(search)
-        return render_template('search.html',
-                               form=search,
-                               navbar=navbar(request.url_rule.endpoint),
-                               navbar_style=navbar_style,
-                              )
 
     #new_function = route('/my/route')(route_base)
 
