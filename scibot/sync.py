@@ -3,8 +3,11 @@
 from os import environ
 from curio import Channel, run
 from scibot.core import syncword
-chan = ('localhost', 12345)
-async def consumer():
+
+if syncword is None:
+    raise KeyError('Please set the RRIDBOT_SYNC environment variable')
+
+async def consumer(chan):
     ch = Channel(chan)
     c = await ch.accept(authkey=syncword.encode())
     myset = set()
@@ -34,6 +37,10 @@ async def consumer():
                 await c.send('ERROR')
         print(myset)
 
+def main():
+    chan = ('localhost', 12345)
+    run(consumer, chan)
+
 if __name__ == '__main__':
-    run(consumer)
+    main()
 
