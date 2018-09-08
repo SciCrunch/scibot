@@ -97,6 +97,7 @@ prefix_lookup['CVCL'] = 'CVCL'  # ah special cases
 async def producer(chan):
     ch = Channel(chan)
     try:
+        print('waiting for sync services to start')
         c = await ch.connect(authkey=syncword.encode())
     except AttributeError:
         raise IOError('Could not connect to the sync process, have you started sync.py?')
