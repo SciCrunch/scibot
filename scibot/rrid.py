@@ -28,10 +28,13 @@ import pprint
 from typing import Callable, Iterable, Tuple, Any, Generator
 from pathlib import Path
 from lxml import etree
-from curio import Channel, run
+from curio import run
+from curio.channel import Channel, AuthenticationError
 from pyramid.response import Response
 from hyputils.hypothesis import HypothesisUtils
+#from scibot.sync import aChannel as Channel
 from scibot.core import api_token, username, group, group2, syncword
+from scibot.utils import makeSimpleLogger
 from scibot.export import export_impl, export_json_impl
 from IPython import embed
 from bs4 import BeautifulSoup
@@ -50,6 +53,8 @@ else:
     port = 4443
 
 host_port = 'https://' + host + ':' + str(port)
+
+log = makeSimpleLogger('scibot.sync')
 
 # utility
 def col0(pairs): return list(zip(*pairs))[0]
@@ -94,19 +99,30 @@ prefix_lookup = {k:v for k, v in prefixes}
 prefix_lookup['CVCL'] = 'CVCL'  # ah special cases
 
 # synchronization setup
-async def producer(chan):
+async def sync_client(chan):
     ch = Channel(chan)
-    try:
-        print('waiting for sync services to start')
-        c = await ch.connect(authkey=syncword.encode())
-    except AttributeError:
-        raise IOError('Could not connect to the sync process, have you started sync.py?')
+    async def auth(_ch):
+        try:
+            print('waiting for sync services to start')
+            return await _ch.connect(authkey=syncword.encode())#, attempts=1)
+        except AuthenticationError as e:
+            raise e
+        #except ConnectionRefusedError as e:
+            #raise ConnectionRefusedError('Could not connect to the sync process, have you started sync.py?') from e
+
+    heh = [await auth(ch)]
     async def send(uri):
-        await c.send(uri)
-        resp = await c.recv()
-        #await c.close()
-        print(resp, uri)
-        return resp
+        c = heh[0]
+        try:
+            await c.send(uri)
+            resp = await c.recv()
+            print(resp, uri)
+            return resp
+        except (EOFError, BrokenPipeError) as e:
+            c = await auth(ch)
+            heh[0] = c
+            return await send(uri)
+            
     return send
 
 
@@ -128,7 +144,7 @@ class Locker:
     
     def _setQ(self, uris):
         for uri in uris:
-            print('putting uri', uri)
+            log.info('putting uri', uri)
             self.urls.put(uri)
         print('done putting', uris, 'in queue')
 
@@ -144,10 +160,10 @@ class Locker:
             print(self.lock, id(self.urls))
             uris = self._getQ()
             if uri in uris:
-                print(uri, 'is already running')
+                log.info(uri, 'is already running')
                 return Response('URI Already running')
             else:
-                print('starting work for', uri)
+                log.info('starting work for', uri)
                 uris.add(uri)
             self._setQ(uris)
 
@@ -557,18 +573,30 @@ def main(local=False):#, lock=None, urls=None):
 
     if __name__ == '__main__':
         args = docopt(__doc__)
-        _sync_port = int(args['--sync-port'])
+        _sync_port = args['--sync-port']
 
         if _sync_port:
-            sync_port = _sync_port
+            sync_port = int(_sync_port)
         else:
             sync_port = _backup_sync_port
     else:
         sync_port = _backup_sync_port
 
     chan = 'localhost', sync_port
-    send = run(producer, chan)
+
+    # TODO
+    #try:
+    #except AuthenticationError as e:
+        #raise e
+    send = run(sync_client, chan)
     URL_LOCK = Locker(send)
+
+    def synctest(request):
+        URL_LOCK.start_uri('test uri')
+        URL_LOCK.stop_uri('test uri')
+        return Response('a thing')
+
+    synctest(None)
 
     def rrid(request):
         return rrid_wrapper(request, username, api_token, group, 'logs/rrid/')
@@ -656,6 +684,9 @@ def main(local=False):#, lock=None, urls=None):
     config.add_route('rrid', '/rrid')
     config.add_view(rrid, route_name='rrid')
 
+    config.add_route('synctest', 'synctest')
+    config.add_view(synctest, route_name='synctest')
+
     config.add_route('validaterrid', 'validaterrid')
     config.add_view(validaterrid, route_name='validaterrid')
 
@@ -675,11 +706,18 @@ def main(local=False):#, lock=None, urls=None):
     if not local:
         return app
     else:
+        from os.path import expanduser
         print('host: %s, port %s' % ( host, port ))
         server = make_server(host, port, app)
         # openssl req -new -x509 -keyout scibot-self-sign-temp.pem -out scibot-self-sign-temp.pem -days 365 -nodes
-        #server.socket = ssl.wrap_socket(server.socket, keyfile='/etc/letsencrypt/live/scibot.scicrunch.io/privkey.pem', certfile='/etc/letsencrypt/live/scibot.scicrunch.io/fullchain.pem', server_side=True)
-        server.socket = ssl.wrap_socket(server.socket, keyfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.key', certfile='/mnt/str/tom/files/certs/scibot_test/tmp-nginx.crt', server_side=True)
+        #server.socket = ssl.wrap_socket(server.socket,
+                                        #keyfile='/etc/letsencrypt/live/scibot.scicrunch.io/privkey.pem',
+                                        #certfile='/etc/letsencrypt/live/scibot.scicrunch.io/fullchain.pem',
+                                        #server_side=True)
+        server.socket = ssl.wrap_socket(server.socket,
+                                        keyfile=expanduser('~/files/certs/scibot_test/tmp-nginx.key'),
+                                        certfile=expanduser('~/files/certs/scibot_test/tmp-nginx.crt'),
+                                        server_side=True)
         server.serve_forever()
 
 

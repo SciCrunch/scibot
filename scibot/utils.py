@@ -1,7 +1,20 @@
 #!/usr/bin/env python3.6
 
+import logging
 from pyontutils.utils import Async, deferred, chunk_list
 from IPython import embed
+
+
+def makeSimpleLogger(name):
+    # TODO use extra ...
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler()  # FileHander goes to disk
+    formatter = logging.Formatter('[%(asctime)s] - %(levelname)s - %(name)s - %(message)s')  # TODO file and lineno ...
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
+
 
 def zap_deleted(get_annos):
     annos = get_annos()
@@ -28,5 +41,3 @@ def zap_deleted(get_annos):
 
     # TODO actually remove them
     embed()
-
-
