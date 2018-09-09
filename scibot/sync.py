@@ -10,7 +10,7 @@ Options:
 
 from curio import run, socket, UniversalEvent, TaskGroup
 from curio.task import timeout_after, sleep
-from curio.errors import TaskTimeout, TaskCancelled
+from curio.errors import TaskTimeout, TaskCancelled, TaskGroupError
 from curio.channel import Channel, Connection, AuthenticationError
 from scibot.utils import makeSimpleLogger
 
@@ -203,64 +203,16 @@ async def client(chan, syncword):
             except RuntimeError as e:  # FIXME not quite right?
                 clog.error(e)  # not eure what is causing this ... maybe a connection error?
 
-        except (EOFError, BrokenPipeError) as e:
+        except (EOFError, BrokenPipeError, TaskGroupError) as e:
+            if isinstance(e, TaskGroupError):
+                if EOFError not in e.errors:
+                    raise e
+
             c = await auth()
             heh[0] = c
             return await send(uri)
 
     return send
-
-
-async def _sync_manager(chan, syncword, process_running=lambda:True):
-    """ sync manager for a SINGLE gunicorn worker pool that can share
-        access to the same upstream connection NOTE that any other
-        process with the access key can rejoin after the initial
-        accept the given chan (port)
-
-        NOTE this does not currently support > 1 master process
-
-        For the record, this is stupidly cpu inefficient. """
-
-    # wait listen for new connections, add them to the task list
-    # for all current connections wait for the next url to be sent
-    ch = Channel(chan)
-    while process_running():
-        try:
-            await done.wait()
-            c = await ch.accept(authkey=syncword.encode())
-            clog.info('initial connection made')
-            break
-        except ConnectionResetError as e:
-            clog.warning('client connection attempt did not terminate property')
-
-    channels = []
-    myset = set()
-    while process_running():
-        try:
-            #async for task in gather(channels):
-            msg = await c.recv()
-        except (EOFError, ConnectionResetError) as e:  # in the event that the client closes
-            clog.info(f'resetting due to {e}')
-            myset = set()
-            c = await ch.accept(authkey=syncword.encode())
-            continue
-        if msg is None:  # explicit reset
-            myset = set()
-        else:
-            op, uri = msg.split(' ', 1)
-            clog.debug(f'> {op} {uri}')
-            if op == 'add':
-                if uri in myset:
-                    await c.send(True)
-                else:
-                    myset.add(uri)
-                    await c.send(False)
-            elif op == 'del':
-                myset.discard(uri)
-                await c.send(False)
-            else:
-                await c.send('ERROR')
-        clog.debug(myset)
 
 
 def main():

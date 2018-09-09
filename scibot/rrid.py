@@ -487,7 +487,7 @@ def main(local=False):#, lock=None, urls=None):
 
     print(username, group, group2)  # sanity check
 
-    from scibot.sync import __doc__ as sync__doc__, Locker, sync_client
+    from scibot.sync import __doc__ as sync__doc__, Locker, client
     from docopt import docopt, parse_defaults
     _sdefaults = {o.name:o.value if o.argcount else None for o in parse_defaults(sync__doc__)}
     _backup_sync_port = int(_sdefaults['--port'])
@@ -509,13 +509,13 @@ def main(local=False):#, lock=None, urls=None):
     #try:
     #except AuthenticationError as e:
         #raise e
-    send = run(sync_client, chan, syncword)
+    send = run(client, chan, syncword)
     URL_LOCK = Locker(send)
 
     def synctest(request):
-        URL_LOCK.start_uri('test uri')
-        URL_LOCK.stop_uri('test uri')
-        return Response('a thing')
+        URL_LOCK.start_uri('a-test-uri')
+        URL_LOCK.stop_uri('a-test-uri')
+        return Response('test-passed?')
 
     synctest(None)
 
@@ -605,8 +605,8 @@ def main(local=False):#, lock=None, urls=None):
     config.add_route('rrid', '/rrid')
     config.add_view(rrid, route_name='rrid')
 
-    config.add_route('synctest', 'synctest')
-    config.add_view(synctest, route_name='synctest')
+    #config.add_route('synctest', 'synctest')
+    #config.add_view(synctest, route_name='synctest')
 
     config.add_route('validaterrid', 'validaterrid')
     config.add_view(validaterrid, route_name='validaterrid')
