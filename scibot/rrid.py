@@ -33,13 +33,10 @@ from curio.channel import Channel, AuthenticationError
 from pyramid.response import Response
 from hyputils.hypothesis import HypothesisUtils
 #from scibot.sync import aChannel as Channel
-from scibot.core import api_token, username, group, group2, syncword
 from scibot.utils import makeSimpleLogger
 from scibot.export import export_impl, export_json_impl
 from IPython import embed
 from bs4 import BeautifulSoup
-
-print(username, group, group2)  # sanity check
 
 prod_username = 'scibot'  # nasty hardcode
 
@@ -97,86 +94,6 @@ prefixes = (
 )
 prefix_lookup = {k:v for k, v in prefixes}
 prefix_lookup['CVCL'] = 'CVCL'  # ah special cases
-
-# synchronization setup
-async def sync_client(chan):
-    ch = Channel(chan)
-    async def auth(_ch):
-        try:
-            print('waiting for sync services to start')
-            return await _ch.connect(authkey=syncword.encode())#, attempts=1)
-        except AuthenticationError as e:
-            raise e
-        #except ConnectionRefusedError as e:
-            #raise ConnectionRefusedError('Could not connect to the sync process, have you started sync.py?') from e
-
-    heh = [await auth(ch)]
-    async def send(uri):
-        c = heh[0]
-        try:
-            await c.send(uri)
-            resp = await c.recv()
-            print(resp, uri)
-            return resp
-        except (EOFError, BrokenPipeError) as e:
-            c = await auth(ch)
-            heh[0] = c
-            return await send(uri)
-            
-    return send
-
-
-class Locker:
-    def __init__(self, send):
-        self.send = send
-
-    def _getQ(self):
-        asdf = set()
-        while 1:
-            try:
-                asdf.add(self.urls.get_nowait())
-                print('oh boy')
-            except Empty:
-                break
-        print('current queue', asdf)
-        #print(id(self))
-        return asdf
-    
-    def _setQ(self, uris):
-        for uri in uris:
-            log.info('putting uri', uri)
-            self.urls.put(uri)
-        print('done putting', uris, 'in queue')
-
-    def start_uri(self, uri):
-        val = run(self.send, 'add ' + uri)
-        if val:
-            return Response('URI Already running ' + uri)
-        else:
-            return
-
-        print(self.lock, id(self.urls))
-        with self.lock:
-            print(self.lock, id(self.urls))
-            uris = self._getQ()
-            if uri in uris:
-                log.info(uri, 'is already running')
-                return Response('URI Already running')
-            else:
-                log.info('starting work for', uri)
-                uris.add(uri)
-            self._setQ(uris)
-
-    def stop_uri(self, uri):
-        run(self.send, 'del ' + uri)
-        return
-        #print(self.lock, id(self.urls))
-        with self.lock:
-            #print(self.lock, id(self.urls))
-            uris = self._getQ()
-            uris.discard(uri)
-            print('completed work for', uri)
-            self._setQ(uris)
 
 #var canonical_url_obj=document.querySelector("link[rel=\\'canonical\\']");
 #var canonical_url=canonical_url_obj?canonical_url_obj.href:null;
@@ -566,7 +483,11 @@ def main(local=False):#, lock=None, urls=None):
     from wsgiref.simple_server import make_server
     from pyramid.config import Configurator
 
-    from scibot.sync import __doc__ as sync__doc__
+    from scibot.core import api_token, username, group, group2, syncword
+
+    print(username, group, group2)  # sanity check
+
+    from scibot.sync import __doc__ as sync__doc__, Locker, sync_client
     from docopt import docopt, parse_defaults
     _sdefaults = {o.name:o.value if o.argcount else None for o in parse_defaults(sync__doc__)}
     _backup_sync_port = int(_sdefaults['--port'])
@@ -588,7 +509,7 @@ def main(local=False):#, lock=None, urls=None):
     #try:
     #except AuthenticationError as e:
         #raise e
-    send = run(sync_client, chan)
+    send = run(sync_client, chan, syncword)
     URL_LOCK = Locker(send)
 
     def synctest(request):
@@ -636,7 +557,7 @@ def main(local=False):#, lock=None, urls=None):
         print(target_uri)
         if running:
             print('################# EARLY EXIT')
-            return running
+            return Response('URI Already running ' + target_uri)
         cleaned_text = clean_text(text)
         tags, unresolved_exacts = existing_tags(target_uri, h)
 

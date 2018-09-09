@@ -8,7 +8,7 @@ from IPython import embed
 def makeSimpleLogger(name):
     # TODO use extra ...
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     ch = logging.StreamHandler()  # FileHander goes to disk
     formatter = logging.Formatter('[%(asctime)s] - %(levelname)s - %(name)s - %(message)s')  # TODO file and lineno ...
     ch.setFormatter(formatter)
