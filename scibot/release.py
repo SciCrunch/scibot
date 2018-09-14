@@ -15,7 +15,7 @@ from scibot.export import bad_tags, get_proper_citation
 from scibot.rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed
 
-get_annos = Memoizer(memfile, api_token, username, group, 200000)
+get_annos = Memoizer(memfile, api_token, username, group)
 get_pannos = Memoizer(pmemfile, api_token, username, group_staging)
 
 def getPMID(tags):
@@ -310,7 +310,13 @@ class RRIDAnno(HypothesisHelper):
     def user(self): return self._anno.user
 
     @mproperty
-    def uri(self): return self._anno.uri
+    def uri(self):
+        uri = self._anno.uri.replace('https://', 'http://')  # FIXME HACK
+        if 'wiley.com' in uri:
+            uri = uri.replace('/full', '')
+            uri = uri.replace('/abs', '')
+
+        return uri
 
     @mproperty
     def target(self): return self._anno.target
@@ -549,8 +555,8 @@ class RRIDAnno(HypothesisHelper):
 class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the first place
     staging_group = group_staging
     release_group = '__world__'
-    h_curation = HypothesisUtils(username=username, token=api_token, group=group, max_results=200000)
-    h_staging = HypothesisUtils(username=username, token=api_token, group=group_staging, max_results=100000)
+    h_curation = HypothesisUtils(username=username, token=api_token, group=group)
+    h_staging = HypothesisUtils(username=username, token=api_token, group=group_staging)
     _annos = {}
     objects = {}
     _papers = None

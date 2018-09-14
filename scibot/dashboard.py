@@ -1,4 +1,5 @@
 #!/usr/bin/env python3.6
+import atexit
 from os import environ
 from pathlib import Path
 from jinja2 import ChoiceLoader, FileSystemLoader
@@ -466,7 +467,7 @@ def Journal(anno):
 def annoSync(memfile, group, helpers=tuple(), world_ok=False):
     if group == '__world__' and not world_ok:
         raise ValueError('Group is set to __world__ please run the usual `export HYP_ ...` command.')
-    get_annos = Memoizer(memfile, api_token, username, group, 200000)
+    get_annos = Memoizer(memfile, api_token, username, group)
     yield get_annos
     prefilter = preFilter(groups=[group]).export()
     hsh = type(f'helperSyncHandler{group}',
@@ -475,21 +476,28 @@ def annoSync(memfile, group, helpers=tuple(), world_ok=False):
                     helpers=helpers))
     annos = get_annos()
     yield annos
-    stream_loop = AnnotationStream(annos, prefilter, hsh)()
-    yield stream_loop
+    stream_thread, exit_loop = AnnotationStream(annos, prefilter, hsh)()
+    yield stream_thread
+    yield exit_loop
 
 def setup():
-    get_annos, annos, stream_loop = annoSync(memfile, group, (Curation,))
-    get_pannos, pannos, pstream_loop = annoSync(pmemfile, group_staging,
+    get_annos, annos, stream_thread, exit_loop = annoSync(memfile, group, (Curation,))
+    get_pannos, pannos, pstream_thread, pexit_loop = annoSync(pmemfile, group_staging,
                                                 (PublicAnno,), world_ok=True)
-    stream_loop.start()
+    def close_stuff():
+        exit_loop()
+        stream_thread.join()
+
+    atexit.register(close_stuff)
+
+    stream_thread.start()
     app = make_app(annos, pannos)
     app.debug=False
     return app
 
 def main():
-    get_annos, annos, stream_loop = annoSync(memfile, group, (Curation,))
-    get_pannos, pannos, pstream_loop = annoSync(pmemfile, group_staging,
+    get_annos, annos, stream_thread, exit_loop = annoSync(memfile, group, (Curation,))
+    get_pannos, pannos, pstream_thread, exit_loop = annoSync(pmemfile, group_staging,
                                                 (PublicAnno,), world_ok=True)
 
     app = make_app(annos, pannos)

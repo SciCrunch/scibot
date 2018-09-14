@@ -7,8 +7,8 @@ from datetime import date
 from collections import defaultdict
 from collections import namedtuple, defaultdict
 from lxml import etree
-from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation
-from scibot.core import api_token, username, group
+from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, Memoizer
+from scibot.core import memfile, api_token, username, group
 
 bad_tags = {
     'RRID:Incorrect',
@@ -41,10 +41,9 @@ def fix_trailing_slash(annotated_urls):
                 annotated_urls[key].extend(annotated_urls.pop(new_key))
 
 def export_impl():
-    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=200000)
-    params = {'group' : h.group }
-    rows = h.search_all(params)
-    annos = [HypothesisAnnotation(row) for row in rows]
+    get_annos = Memoizer(memfile, username=username, api_token=api_token, group=group)
+    annos = get_annos()
+
     annotated_urls = defaultdict(list)
     for anno in annos:
         annotated_urls[anno.uri].append(anno)
@@ -161,10 +160,8 @@ def export_impl():
     return output_rows, DATE
 
 def export_json_impl():
-    h = HypothesisUtils(username=username, token=api_token, group=group, max_results=200000)
-    params = {'group' : h.group }
-    rows = h.search_all(params)
-    annos = [HypothesisAnnotation(row) for row in rows]
+    get_annos = Memoizer(memfile, username=username, api_token=api_token, group=group)
+    annos = get_annos()
 
     # clean up bugs from old curation workflow
     for anno in annos:
