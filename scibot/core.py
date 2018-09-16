@@ -8,6 +8,9 @@ group2 = environ.get('SCIBOT_GROUP2', '__world__')
 group_staging = environ.get('SCIBOT_GROUP_STAGING', '__world__')
 syncword = environ.get('SCIBOT_SYNC')
 
+if syncword is None:
+    raise KeyError('Please set the SCIBOT_SYNC environment variable')
+
 READ_ONLY = True
 if group_staging == '__world__' and not READ_ONLY:
     raise IOError('WARNING YOU ARE DOING THIS FOR REAL PLEASE COMMENT OUT THIS LINE')

@@ -217,8 +217,6 @@ async def client(chan, syncword):
 
 def main():
     from scibot.core import syncword
-    if syncword is None:
-        raise KeyError('Please set the SCIBOT_SYNC environment variable')
 
     import os
     os.sys.stdout.write(f'\x1b]2;{os.path.basename(__file__)}\x07\n')

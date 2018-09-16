@@ -132,7 +132,7 @@ body { font-family: verdana; margin:.75in }
 
 def bookmarklet_wrapper(request, endpoint):
     """ Return text of the SciBot bookmarklet """
-    normalized = request.scheme + '://' + request.host
+    normalized = 'https://' + request.host
     code = bookmarklet_base % (normalized, endpoint)
     bookmarklet = code.replace('"', '&quot;').replace('\n','')
     html = html_base % (bookmarklet, request.host.split('.', 1)[-1], code)
@@ -499,11 +499,8 @@ def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
         json.dump(log, f, sort_keys=True, indent=4)
 
 def main(local=False):
-
     from scibot.core import api_token, username, group, group2, syncword
-
     print(username, group, group2)  # sanity check
-
     from scibot.sync import __doc__ as sync__doc__, Locker, client
     from docopt import docopt, parse_defaults
     _sdefaults = {o.name:o.value if o.argcount else None for o in parse_defaults(sync__doc__)}

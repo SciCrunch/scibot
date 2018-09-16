@@ -5,5 +5,5 @@ import os
 
 os.sys.stdout.write(f'\x1b]2;{os.path.basename(__name__)}\x07\n')
 
-from scibot.rrid import main
+from scibot.bookmarklet import main
 app = main()
