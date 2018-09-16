@@ -30,28 +30,24 @@ from pathlib import Path
 from lxml import etree
 from curio import run
 from curio.channel import Channel, AuthenticationError
-from pyramid.response import Response
+from flask import Flask, request, abort
 from hyputils.hypothesis import HypothesisUtils
-#from scibot.sync import aChannel as Channel
 from scibot.utils import makeSimpleLogger
 from scibot.export import export_impl, export_json_impl
 from IPython import embed
 from bs4 import BeautifulSoup
 
-prod_username = 'scibot'  # nasty hardcode
+log = makeSimpleLogger('scibot.bookmarklet')
 
-if 0:#username == prod_username:
-    host = '0.0.0.0'
-    port = 443
+# types
 
-else: 
-    print('no login detected, running on localhost only')
-    host = 'localhost'
-    port = 4443
-
-host_port = 'https://' + host + ':' + str(port)
-
-log = makeSimpleLogger('scibot.sync')
+Found = Tuple[str, str, str, str]
+Finder = Callable[[str], Iterable[Found]]
+Checker = Callable[[Found], bool]
+Resolved = Tuple[str, int, str]
+Resolver = Callable[[Found], Resolved]
+Submitter = Callable[[Found, Resolved], Any]
+Processor = Callable[[str, str], Generator]
 
 # utility
 def col0(pairs): return list(zip(*pairs))[0]
@@ -103,7 +99,6 @@ prefix_lookup['CVCL'] = 'CVCL'  # ah special cases
 #var sd_doi=sd_doi_obj?sd_doi_obj.href:null;
 #document.querySelector('meta[name=\'DOI\']')
 
-
 bookmarklet_base = r"""
 javascript:(function(){var xhr=new XMLHttpRequest();
 
@@ -137,26 +132,80 @@ body { font-family: verdana; margin:.75in }
 
 def bookmarklet_wrapper(request, endpoint):
     """ Return text of the SciBot bookmarklet """
-    code = bookmarklet_base % (request.application_url.replace('http:', 'https:'), endpoint)
+    normalized = request.scheme + '://' + request.host
+    code = bookmarklet_base % (normalized, endpoint)
     bookmarklet = code.replace('"', '&quot;').replace('\n','')
     html = html_base % (bookmarklet, request.host.split('.', 1)[-1], code)
-    r = Response(html)
-    r.content_type = 'text/html'
-    return r
+    return html
 
-def bookmarklet(request):
-    return bookmarklet_wrapper(request, 'rrid')
+def rrid_wrapper(request, username, api_token, group, logloc, URL_LOCK):
+    """ Receive an article, parse RRIDs, resolve them, create annotations, log results """
+    h = HypothesisUtils(username=username, token=api_token, group=group)
+    if  request.method == 'OPTIONS':
+        return rrid_OPTIONS(request)
+    elif request.method == 'POST':
+        return rrid_POST(request, h, logloc, URL_LOCK)
+    else:
+        return abort(405)
 
-def validatebookmarklet(request):
-    return bookmarklet_wrapper(request, 'validaterrid')
+def rrid_OPTIONS(request):  # TODO
+    try:
+        request_headers = request.headers['Access-Control-Request-Headers'].lower()
+        request_headers = re.findall('\w(?:[-\w]*\w)', request_headers)
+    except KeyError:
+        request_headers = []
+    response_headers = ['access-control-allow-origin']
+    for req_acoa_header in request_headers:
+        if req_acoa_header not in response_headers:
+            response_headers.append(req_acoa_header)
+    response_headers = ','.join(response_headers)
+    return '', 204, {'Access-Control-Allow-Origin': '*',
+                     'Access-Control-Allow-Headers': response_headers}
 
-Found = Tuple[str, str, str, str]
-Finder = Callable[[str], Iterable[Found]]
-Checker = Callable[[Found], bool]
-Resolved = Tuple[str, int, str]
-Resolver = Callable[[Found], Resolved]
-Submitter = Callable[[Found, Resolved], Any] 
-Processor = Callable[[str, str], Generator]
+def rrid_POST(request, h, logloc, URL_LOCK):
+    target_uri, doi, head, body, text = process_POST_request(request)
+    running = URL_LOCK.start_uri(target_uri)
+    print(target_uri)
+    if running:
+        print('################# EARLY EXIT')
+        return 'URI Already running ' + target_uri
+
+    cleaned_text = clean_text(text)
+    tags, unresolved_exacts = existing_tags(target_uri, h)
+
+    if doi:
+        pmid = get_pmid(doi)
+        annotate_doi_pmid(target_uri, doi, pmid, h, tags)
+    else:
+        pmid = None
+
+    found_rrids = {}
+    existing = []
+
+    finder = find_rrids
+
+    def checker(found):
+        prefix, exact, exact_for_hypothesis, suffix = found
+        return not check_already_submitted(exact, exact_for_hypothesis, found_rrids, tags, unresolved_exacts)
+
+    def resolver(found):
+        prefix, exact, exact_for_hypothesis, suffix = found
+        return rrid_resolver_xml(exact, found_rrids)
+
+    def submitter(found, resolved):
+        return submit_to_h(target_uri, found, resolved, h, found_rrids, existing)
+
+    processText = make_find_check_resolve_submit(finder, checker, resolver, submitter)
+
+    responses = list(processText(cleaned_text))
+
+    results = ', '.join(found_rrids.keys())
+    write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h)
+    write_log(target_uri, doi, pmid, found_rrids, head, body, text, h)
+
+    URL_LOCK.stop_uri(target_uri)
+    return results, 200, {'Content-Type': 'text/plain',
+                          'Access-Control-Allow-Origin':'*'}
 
 def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker, resolver: Resolver, submitter: Submitter) -> Processor:
     def inner(text: str) -> Generator:
@@ -166,9 +215,9 @@ def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker, r
                 resolved = resolver(found)
                 yield submitter(found, resolved)
     return inner
-    
+
 def process_POST_request(request):
-    dict_ = urlparse.parse_qs(request.text)
+    dict_ = dict(request.form)
     def htmlify(thing):
         try:
             html = dict_[thing][0]
@@ -185,7 +234,7 @@ def process_POST_request(request):
 
     headsoup = BeautifulSoup(head, 'lxml')
     bodysoup = BeautifulSoup(body, 'lxml')
-           
+
     target_uri = getUri(uri, headsoup, bodysoup)
     doi = getDoi(headsoup, bodysoup)
     return target_uri, doi, head, body, text
@@ -241,7 +290,7 @@ def getUri(uri, *soups):
                     print('canonical and uri do not match, preferring canonical', cu, uri)
                 return cu
     return uri
- 
+
 def existing_tags(target_uri, h):#, doi, text, h):
     params = {
         'limit':200,
@@ -449,39 +498,7 @@ def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
     with open(fname, 'wt') as f:
         json.dump(log, f, sort_keys=True, indent=4)
 
-def export(request):
-    print('starting csv export')
-    output_rows, DATE = export_impl()    
-    data = StringIO()
-    writer = csv.writer(data)
-    writer.writerows(sorted(output_rows))
-
-    r = Response(gzip.compress(data.getvalue().encode()))
-    r.content_type = 'text/csv'
-    r.headers.update({
-        'Content-Disposition':'attachment;filename = RRID-data-%s.csv' % DATE,
-        'Content-Encoding':'gzip'
-        })
-
-    return r
-
-def export_json(request):
-    print('starting json export')
-    output_json, DATE = export_json_impl()    
-    data = json.dumps(output_json, sort_keys=True, indent=4)
-
-    r = Response(gzip.compress(data.encode()))
-    r.content_type = 'application/json'
-    r.headers.update({
-        'Content-Encoding':'gzip'
-        })
-
-    return r
-
-def main(local=False):#, lock=None, urls=None):
-
-    from wsgiref.simple_server import make_server
-    from pyramid.config import Configurator
+def main(local=False):
 
     from scibot.core import api_token, username, group, group2, syncword
 
@@ -491,6 +508,8 @@ def main(local=False):#, lock=None, urls=None):
     from docopt import docopt, parse_defaults
     _sdefaults = {o.name:o.value if o.argcount else None for o in parse_defaults(sync__doc__)}
     _backup_sync_port = int(_sdefaults['--port'])
+
+    app = Flask('scibot bookmarklet server')
 
     if __name__ == '__main__':
         args = docopt(__doc__)
@@ -512,122 +531,62 @@ def main(local=False):#, lock=None, urls=None):
     send = run(client, chan, syncword)
     URL_LOCK = Locker(send)
 
-    def synctest(request):
+    #@app.route('/synctest', methods=['GET'])
+    def synctest():
         URL_LOCK.start_uri('a-test-uri')
         URL_LOCK.stop_uri('a-test-uri')
-        return Response('test-passed?')
+        return 'test-passed?'
 
-    synctest(None)
+    synctest()
 
-    def rrid(request):
-        return rrid_wrapper(request, username, api_token, group, 'logs/rrid/')
+    @app.route('/rrid', methods=['POST', 'OPTIONS'])
+    def rrid():
+        return rrid_wrapper(request, username, api_token, group, 'logs/rrid/', URL_LOCK)
 
+    @app.route('/validaterrid', methods=['POST', 'OPTIONS'])
     def validaterrid(request):
-        return rrid_wrapper(request, username, api_token, group2, 'logs/validaterrid/')
+        return rrid_wrapper(request, username, api_token, group2, 'logs/validaterrid/', URL_LOCK)
 
-    def rrid_wrapper(request, username, api_token, group, logloc):
-        """ Receive an article, parse RRIDs, resolve them, create annotations, log results """
-        h = HypothesisUtils(username=username, token=api_token, group=group)
-        if  request.method == 'OPTIONS':
-            return rrid_OPTIONS(request)
-        elif request.method == 'POST':
-            return rrid_POST(request, h, logloc)
-        else:
-            return Response(status_code=405)
+    @app.route('/bookmarklet', methods=['GET'])
+    def bookmarklet():
+        return bookmarklet_wrapper(request, 'rrid')
 
-    def rrid_OPTIONS(request):
-        response = Response()
-        request_headers = request.headers['Access-Control-Request-Headers'].lower()
-        request_headers = re.findall('\w(?:[-\w]*\w)', request_headers)
-        response_headers = ['access-control-allow-origin']
-        for req_acoa_header in request_headers:
-            if req_acoa_header not in response_headers:
-                response_headers.append(req_acoa_header)
-        response_headers = ','.join(response_headers)
-        response.headers.update({
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': '%s' % response_headers
-            })
-        response.status_int = 204
-        return response
+    @app.route('/validatebookmarklet', methods=['GET'])
+    def validatebookmarklet():
+        return bookmarklet_wrapper(request, 'validaterrid')
 
-    def rrid_POST(request, h, logloc):
-        target_uri, doi, head, body, text = process_POST_request(request)
-        running = URL_LOCK.start_uri(target_uri)
-        print(target_uri)
-        if running:
-            print('################# EARLY EXIT')
-            return Response('URI Already running ' + target_uri)
-        cleaned_text = clean_text(text)
-        tags, unresolved_exacts = existing_tags(target_uri, h)
+    @app.route('/export', methods=['GET'])
+    def export():
+        print('starting csv export')
+        output_rows, DATE = export_impl()
+        data = StringIO()
+        writer = csv.writer(data)
+        writer.writerows(sorted(output_rows))
+        return gzip.compress(data.getvalue().encode()), 200, {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': 'attachment;filename = RRID-data-%s.csv' % DATE,
+            'Content-Encoding': 'gzip'}
 
-        if doi:
-            pmid = get_pmid(doi)
-            annotate_doi_pmid(target_uri, doi, pmid, h, tags)
-        else:
-            pmid = None
+    @app.route('/export.json', methods=['GET'])
+    def export_json():
+        print('starting json export')
+        output_json, DATE = export_json_impl()
+        data = json.dumps(output_json, sort_keys=True, indent=4)
 
-        found_rrids = {}
-        existing = []
+        return gzip.compress(data.encode()), 200, {
+            'Content-Type': 'application/json',
+            'Content-Encoding': 'gzip'}
 
-        finder = find_rrids
-
-        def checker(found):
-            prefix, exact, exact_for_hypothesis, suffix = found
-            return not check_already_submitted(exact, exact_for_hypothesis, found_rrids, tags, unresolved_exacts)
-
-        def resolver(found):
-            prefix, exact, exact_for_hypothesis, suffix = found
-            return rrid_resolver_xml(exact, found_rrids)
-
-        def submitter(found, resolved):
-            return submit_to_h(target_uri, found, resolved, h, found_rrids, existing)
-
-        processText = make_find_check_resolve_submit(finder, checker, resolver, submitter)
-
-        responses = list(processText(cleaned_text))
-
-        results = ', '.join(found_rrids.keys())
-        write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h)
-        write_log(target_uri, doi, pmid, found_rrids, head, body, text, h)
-
-        r = Response(results)
-        r.content_type = 'text/plain'
-        r.headers.update({
-            'Access-Control-Allow-Origin':'*',
-        })
-
-        URL_LOCK.stop_uri(target_uri)
-        return r
-
-    config = Configurator()
-
-    config.add_route('rrid', '/rrid')
-    config.add_view(rrid, route_name='rrid')
-
-    #config.add_route('synctest', 'synctest')
-    #config.add_view(synctest, route_name='synctest')
-
-    config.add_route('validaterrid', 'validaterrid')
-    config.add_view(validaterrid, route_name='validaterrid')
-
-    config.add_route('bookmarklet', '/bookmarklet')
-    config.add_view(bookmarklet, route_name='bookmarklet')
-
-    config.add_route('validatebookmarklet', '/validatebookmarklet')
-    config.add_view(validatebookmarklet, route_name='validatebookmarklet')
-
-    config.add_route('export', '/export')
-    config.add_view(export, route_name='export')
-
-    config.add_route('export.json', '/export.json')
-    config.add_view(export_json, route_name='export.json')
-
-    app = config.make_wsgi_app()
     if not local:
         return app
     else:
         from os.path import expanduser
+        from wsgiref.simple_server import make_server
+
+        print('no login detected, running on localhost only')
+        host = 'localhost'
+        port = 4443
+
         print('host: %s, port %s' % ( host, port ))
         server = make_server(host, port, app)
         # openssl req -new -x509 -keyout scibot-self-sign-temp.pem -out scibot-self-sign-temp.pem -days 365 -nodes
