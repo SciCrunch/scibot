@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# scibot-dbsetup [PORT] [DATABASE]
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do # resolve all symlinks
+  DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # resolve relative symlinks
+done
+ABS_PATH="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+
+SQL="${ABS_PATH}/../sql/"
+RESOURCES="${ABS_PATH}/../resources/"
+
+if [ -z $1 ]; then
+    PORT=5432
+else
+    PORT=$1
+fi
+
+if [ -z $2 ]; then
+    DATABASE=scibot_test
+else
+    DATABASE=$2
+fi
+
+# postgres setup
+psql -U postgres -h localhost -p $PORT -d postgres  -f "${SQL}/postgres.sql" -v database=$DATABASE &&
+psql -U postgres -h localhost -p $PORT -d $DATABASE -f "${SQL}/extensions.sql" &&
+
+# scibot-admin setup
+psql -U scibot-admin -h localhost -p $PORT -d $DATABASE -f "${SQL}/schemas.sql"
+#psql -U scibot-admin -h localhost -p $PORT -d $DATABASE -f "${SQL}/permissions.sql" -v database=$DATABASE  # FIXME this has to be run after populating the database via python
