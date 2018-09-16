@@ -1,8 +1,10 @@
 from pathlib import Path
 from datetime import datetime
+import json
 from h import models
 from h.db import init
 from h.util.uri import normalize as uri_normalize
+from h.db.types import _get_hex_from_urlsafe, _get_urlsafe_from_hex
 from sqlalchemy import create_engine
 from sqlalchemy.orm.session import sessionmaker
 from hyputils.hypothesis import Memoizer
@@ -13,8 +15,8 @@ from interlex.core import makeParamsValues  # FIXME probably need a common impor
 from IPython import embed
 
 
-def getSession(dburi=config.dbUri()):
-    engine = create_engine(dburi)
+def getSession(dburi=config.dbUri(), echo=False):
+    engine = create_engine(dburi, echo=echo)
 
     Session = sessionmaker()
     Session.configure(bind=engine)
@@ -108,7 +110,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         else:
             rows = [a._row for a in self.get_annos()]
 
-        datas = [quickload(r) for r in rows]
+        datas = [quickload(r, hexid=True) for r in rows]  # toggle hexid if doing a bulk load
         self.log.debug(f'quickload complete for {len(rows)} rows')
 
         uris = {uri_normalize(j['uri']):quickuri(j)
@@ -127,10 +129,24 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         self.session.flush()  # get ids without commit
         self.log.debug('flush done')
 
-        keys = list(datas[0].keys()) + ['document_id']
+        def fix_reserved(k):
+            if k == 'references':
+                k = '"references"'
+
+            return k
+
+        keys = [fix_reserved(k) for k in datas[0].keys()] + ['document_id']
+        def json_fix(v):
+            if isinstance(v, dict):
+                return json.dumps(v)  # FIXME perf?
+            elif isinstance(v, list):
+                if any(isinstance(e, dict) for e in v):
+                    return json.dumps(v)  # FIXME perf?
+            return v
+
         def make_vs(d):
             document_id = dbdocs[uri_normalize(d['target_uri'])].id
-            return list(d.values()) + [document_id],  # don't miss the , to make this a value set
+            return [json_fix(v) for v in d.values()] + [document_id],  # don't miss the , to make this a value set
 
         values_sets = [make_vs(d) for d in datas]
         self.log.debug('values sets done')
@@ -141,6 +157,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             self.session.execute(sql, values)
         except BaseException as e:
             embed()
+
         self.log.debug('execute done')
         self.session.flush()
         self.log.debug('flush done')
@@ -154,6 +171,16 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         """ streaming one anno at a time version of sync """
         for row in self.yield_from_api(search_after=last_updated, stop_at=stop_at):
             yield row, 'TODO'
+            continue
+            # TODO
+            a = [models.Annotation(**d,
+                                   document_id=dbdocs[uri_normalize(d['target_uri'])].id)
+                 for d in datas]  # slow
+            self.log.debug('making annotations')
+            self.session.add_all(a)
+            self.log.debug('adding all annotations')
+
+
 
 
 def uuid_to_urlsafe(uuid):

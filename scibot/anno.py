@@ -1,4 +1,5 @@
 from h import models
+from h.db.types import _get_hex_from_urlsafe
 from h.util.uri import normalize as uri_normalize
 from h.schemas.annotation import CreateAnnotationSchema
 
@@ -50,12 +51,13 @@ def make_anno(data, dbdocs):
     return annotation
 
 
-def quickload(j):
+def quickload(j, hexid=False):
     """ a quickload routine for json that comes from the hypothes.is api
         and that has already passed the json schema validate checks """
 
+    id = _get_hex_from_urlsafe(j['id']) if hexid else j['id']
     return {
-        'id':j['id'],
+        'id': id,
         'created':j['created'],
         'updated':j['updated'],
         #'document':{},
