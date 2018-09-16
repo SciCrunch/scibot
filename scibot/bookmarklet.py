@@ -277,10 +277,11 @@ def main(local=False):
     else:
         from os.path import expanduser
         from wsgiref.simple_server import make_server
+        from scibot.config import test_host, port_bookmarklet
 
         print('no login detected, running on localhost only')
-        host = 'localhost'
-        port = 4443
+        host = test_host
+        port = port_bookmarklet
 
         print('host: %s, port %s' % ( host, port ))
         server = make_server(host, port, app)

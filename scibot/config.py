@@ -1,6 +1,36 @@
 import hashlib
 from os import environ
 
+# ports
+port_bookmarklet = 4443
+port_dashboard = 8080
+
+## WARNING if you change one of these update the file in bin/
+port_guni_bookmarket = 5000     # scibot-bookmarklet
+port_guni_dashboard = 5005      # scibot-dashboard
+
+# dev
+dev_remote_hosts = 'athena', 'arachne'
+
+# testing
+test_host = 'localhost'
+test_port = port_bookmarklet
+test_database = '__scibot_testing'
+
+# db
+user = 'scibot-user'
+database = environ.get('SCIBOT_DATABASE', test_database)
+
+# mq
+vhost = 'scibot'
+broker_url = environ.get('CELERY_BROKER_URL',
+                         environ.get('BROKER_URL',
+                                     'amqp://guest:guest@localhost:5672//'))
+broker_backend = environ.get('CELERY_BROKER_BACKEND',
+                             environ.get('BROKER_BACKEND',
+                                         'rpc://'))
+accept_content = ('pickle', 'json')
+
 # hypothesis
 api_token = environ.get('SCIBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
 username = environ.get('SCIBOT_USERNAME', 'USERNAME') # Hypothesis username

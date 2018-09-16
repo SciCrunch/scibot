@@ -507,7 +507,8 @@ def main():
     app.config['SESSION_TYPE'] = 'filesystem'
     print(app.view_functions)
     app.debug = False
-    app.run(host='localhost', port=8080)
+    from scibot.config import test_host, port_dashboard
+    app.run(host=test_host, port=port_dashboard)
 
 if __name__ == '__main__':
     main()
