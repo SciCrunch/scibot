@@ -56,6 +56,10 @@ def quickload(j, hexid=False):
         and that has already passed the json schema validate checks """
 
     id = _get_hex_from_urlsafe(j['id']) if hexid else j['id']
+    references = (([_get_hex_from_urlsafe(e) for e in j['references']] if hexid else j['references'])
+                  if 'references' in j
+                  else [])
+    
     return {
         'id': id,
         'created':j['created'],
@@ -63,7 +67,7 @@ def quickload(j, hexid=False):
         #'document':{},
         'extra':{},
         'groupid':j['group'],
-        'references':j['references'] if 'references' in j else [],
+        'references':references,
         'shared':not j['hidden'] if 'hidden' in j else True,  # some time in august hidden was dropped
         'tags':j['tags'],
         'target_selectors':[selector

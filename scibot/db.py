@@ -7,6 +7,7 @@ from h.util.uri import normalize as uri_normalize
 from h.db.types import _get_hex_from_urlsafe, _get_urlsafe_from_hex
 from sqlalchemy import create_engine
 from sqlalchemy.orm.session import sessionmaker
+from sqlalchemy.dialects.postgresql import UUID
 from hyputils.hypothesis import Memoizer
 from scibot import config
 from scibot.anno import quickload, quickuri, add_doc_all
@@ -108,7 +109,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                 last_updated = None
             rows = list(self.yield_from_api(search_after=last_updated, stop_at=stop_at))
         else:
-            rows = [a._row for a in self.get_annos()]
+            rows = [a._row for a in self.get_annos() if a.references][:1]
 
         datas = [quickload(r, hexid=True) for r in rows]  # toggle hexid if doing a bulk load
         self.log.debug(f'quickload complete for {len(rows)} rows')
@@ -129,6 +130,15 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         self.session.flush()  # get ids without commit
         self.log.debug('flush done')
 
+        """
+        a = [models.Annotation(**d,
+                                document_id=dbdocs[uri_normalize(d['target_uri'])].id)
+                for d in datas]  # slow
+        self.log.debug('making annotations')
+        self.session.add_all(a)
+        self.log.debug('adding all annotations')
+
+        """
         def fix_reserved(k):
             if k == 'references':
                 k = '"references"'
@@ -136,17 +146,21 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             return k
 
         keys = [fix_reserved(k) for k in datas[0].keys()] + ['document_id']
-        def json_fix(v):
+        def type_fix(k, v):
             if isinstance(v, dict):
                 return json.dumps(v)  # FIXME perf?
             elif isinstance(v, list):
                 if any(isinstance(e, dict) for e in v):
                     return json.dumps(v)  # FIXME perf?
+                elif k == 'references' and v:
+                    embed()
+                    return [UUID(e) for e in v]
+
             return v
 
         def make_vs(d):
             document_id = dbdocs[uri_normalize(d['target_uri'])].id
-            return [json_fix(v) for v in d.values()] + [document_id],  # don't miss the , to make this a value set
+            return [type_fix(k, v) for k, v in d.items()] + [document_id],  # don't miss the , to make this a value set
 
         values_sets = [make_vs(d) for d in datas]
         self.log.debug('values sets done')
@@ -159,8 +173,11 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             embed()
 
         self.log.debug('execute done')
+        #"""
+
         self.session.flush()
         self.log.debug('flush done')
+
         embed()
         return
         self.session.commit()
