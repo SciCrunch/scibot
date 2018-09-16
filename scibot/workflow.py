@@ -365,7 +365,7 @@ def main():
     # sort the tags
     # check against valid end states
     from hyputils.hypothesis import Memoizer, HypothesisHelper
-    from scibot.core import api_token, username, group, memfile
+    from scibot.config import api_token, username, group, memfile
 
     class Werk(HypothesisHelper):
         _annos = {}

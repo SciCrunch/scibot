@@ -196,7 +196,7 @@ def rrid_wrapper(request, username, api_token, group, logloc, URL_LOCK):
 
 
 def main(local=False):
-    from scibot.core import api_token, username, group, group2, syncword
+    from scibot.config import api_token, username, group, group2, syncword
     print(username, group, group2)  # sanity check
     from scibot.sync import __doc__ as sync__doc__, Locker, client
     from docopt import docopt, parse_defaults

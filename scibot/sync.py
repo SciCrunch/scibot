@@ -216,7 +216,7 @@ async def client(chan, syncword):
 
 
 def main():
-    from scibot.core import syncword
+    from scibot.config import syncword
 
     import os
     os.sys.stdout.write(f'\x1b]2;{os.path.basename(__file__)}\x07\n')

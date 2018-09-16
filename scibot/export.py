@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections import namedtuple, defaultdict
 from lxml import etree
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, Memoizer
-from scibot.core import memfile, api_token, username, group
+from scibot.config import memfile, api_token, username, group
 
 bad_tags = {
     'RRID:Incorrect',

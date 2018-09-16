@@ -3,7 +3,7 @@ import atexit
 from os import environ
 from pathlib import Path
 from jinja2 import ChoiceLoader, FileSystemLoader
-from scibot.core import api_token, username, group, group_staging, memfile, pmemfile
+from scibot.config import api_token, username, group, group_staging, memfile, pmemfile
 from scibot.release import Curation, PublicAnno
 from scibot.rrid import PMID, DOI
 from scibot.export import bad_tags

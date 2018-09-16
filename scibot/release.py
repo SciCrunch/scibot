@@ -10,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
-from scibot.core import api_token, username, group, group_staging, memfile, pmemfile
+from scibot.config import api_token, username, group, group_staging, memfile, pmemfile
 from scibot.export import bad_tags, get_proper_citation
 from scibot.rrid import getDoi, get_pmid, annotate_doi_pmid
 from IPython import embed

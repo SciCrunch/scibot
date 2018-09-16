@@ -1,6 +1,7 @@
 import hashlib
 from os import environ
 
+# hypothesis
 api_token = environ.get('SCIBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token
 username = environ.get('SCIBOT_USERNAME', 'USERNAME') # Hypothesis username
 group = environ.get('SCIBOT_GROUP', '__world__')
