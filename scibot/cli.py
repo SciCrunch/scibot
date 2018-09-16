@@ -12,6 +12,7 @@ Options:
 """
 
 import os
+from IPython import embed
 
 
 def main():

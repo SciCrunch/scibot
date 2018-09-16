@@ -4,10 +4,11 @@ import json
 from h import models
 from h.db import init
 from h.util.uri import normalize as uri_normalize
-from h.db.types import _get_hex_from_urlsafe, _get_urlsafe_from_hex
+from h.db.types import _get_hex_from_urlsafe, _get_urlsafe_from_hex, URLSafeUUID
 from sqlalchemy import create_engine
+from sqlalchemy.sql import text
 from sqlalchemy.orm.session import sessionmaker
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY
 from hyputils.hypothesis import Memoizer
 from scibot import config
 from scibot.anno import quickload, quickuri, add_doc_all
@@ -94,11 +95,12 @@ class DbQueryFactory:
 class AnnoSyncFactory(Memoizer, DbQueryFactory):
     log = makeSimpleLogger('scibot.db.sync')
     convert = (datetime.isoformat,)
-    query = 'SELECT updated FROM annotation ORDER BY updated LIMIT 1'
+    query = 'SELECT updated FROM annotation ORDER BY updated DESC LIMIT 1'
 
     def __init__(self, api_token=config.api_token, username=config.username,
-                 group=config.group, memoization_file=None):
+                 group=config.group, memoization_file=None, condition=''):
         super().__init__(memoization_file, api_token=api_token, username=username, group=group)
+        self.condition = condition
 
     def sync_annos(self, search_after=None, stop_at=None):
         """ batch sync """
@@ -109,9 +111,9 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                 last_updated = None
             rows = list(self.yield_from_api(search_after=last_updated, stop_at=stop_at))
         else:
-            rows = [a._row for a in self.get_annos() if a.references][:1]
+            rows = [a._row for a in self.get_annos()]
 
-        datas = [quickload(r, hexid=True) for r in rows]  # toggle hexid if doing a bulk load
+        datas = [quickload(r) for r in rows]
         self.log.debug(f'quickload complete for {len(rows)} rows')
 
         uris = {uri_normalize(j['uri']):quickuri(j)
@@ -127,6 +129,8 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
 
         vals = list(dbdocs.values())
         self.session.add_all(vals)  # this is super fast locally and hangs effectively forever remotely :/ wat
+        self.log.debug('add all done')
+        embed()
         self.session.flush()  # get ids without commit
         self.log.debug('flush done')
 
@@ -146,27 +150,36 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             return k
 
         keys = [fix_reserved(k) for k in datas[0].keys()] + ['document_id']
-        def type_fix(k, v):
+        def type_fix(k, v):  # TODO is this faster or is type_fix?
             if isinstance(v, dict):
                 return json.dumps(v)  # FIXME perf?
             elif isinstance(v, list):
                 if any(isinstance(e, dict) for e in v):
                     return json.dumps(v)  # FIXME perf?
-                elif k == 'references' and v:
-                    embed()
-                    return [UUID(e) for e in v]
-
             return v
 
         def make_vs(d):
             document_id = dbdocs[uri_normalize(d['target_uri'])].id
             return [type_fix(k, v) for k, v in d.items()] + [document_id],  # don't miss the , to make this a value set
 
+        def make_types(d):
+            def inner(k):
+                if k == 'id':
+                    return URLSafeUUID
+                elif k == 'references':
+                    return ARRAY(URLSafeUUID)
+                else:
+                    return None
+            return [inner(k) for k in d] + [None]  # note this is continuous there is no comma
+
         values_sets = [make_vs(d) for d in datas]
+        types = [make_types(d) for d in datas]
         self.log.debug('values sets done')
 
-        *values_templates, values = makeParamsValues(*values_sets)
-        sql = f'INSERT INTO annotation ({", ".join(keys)}) VALUES {", ".join(values_templates)}'
+        *values_templates, values, bindparams = makeParamsValues(*values_sets, types=types)
+        sql = text(f'INSERT INTO annotation ({", ".join(keys)}) VALUES {", ".join(values_templates)}')
+        sql = sql.bindparams(*bindparams)
+        #sql = sql.bindparams(bindparam('id', URLSafeUUID), bindparam('references', ARRAY(URLSafeUUID)))
         try:
             self.session.execute(sql, values)
         except BaseException as e:
