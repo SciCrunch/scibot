@@ -65,6 +65,10 @@ def main():
             rows = _rows
             # rows = [r for r in _rows if 'articles/4-42/' in r['uri']]
             # rows = [r for r in _rows if '10.1002/jnr.23615' in r['uri']]
+            # rows = [r for r in _rows if 'ncomms8028' in r['uri']]  # TODO res chain these
+            # rows = [r for r in _rows if '?term=Gene' in r['uri']]
+            # rows = [r for r in _rows if 'index.php?' in r['uri']]
+            # rows = [r for r in _rows if 'govhttp' in r['uri']]  # maximum wat
 
             if False:
                 t0 = time()
@@ -86,6 +90,7 @@ def main():
             qload =  t4 - t3
             qflush = t5 - t4
             print('q:', qload, qflush)
+            # q: 9.994797706604004 8.899968147277832
             embed()
 
 

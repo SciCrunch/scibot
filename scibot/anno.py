@@ -63,12 +63,32 @@ def uri_normalization(uri):
                           .replace('.pdf', '')
                           # note .full.pdf is a thing
                           )
+        elif anyMembers(no_scheme,
+                        'jci.org',
+                        'nature.com'):
+            # cases where safe to remove query fragment
+            normalized, *_query = no_scheme.rsplit('?', 1)
+        elif 'nih.gov/pubmed/?' in no_scheme:
+            # FIXME scibot vs client norm?
+            normalized = no_scheme.replace(' ', '+')
+        elif 'govhttp' in no_scheme:
+            # lol oh dear
+            hrm, oops = no_scheme.split('govhttp')
+            print('Dear Jo pls help', 'https:' + oops.strip(':'))
+            ded, wat = oops.split('//', 1)
+            blargh, suffix = wat.split('/', 1)
+            normalized = hrm + 'gov/pmc/' + suffix
+        elif anyMembers(no_scheme,
+                        'index.php?',
+                       ):
+            # cases where we just use hypothes.is normalization
+            _scheme, normalized = uri_normalize(uri).split('://')
         else:
             normalized = no_scheme
 
         return normalized
 
-    except ValueError:  # split fail
+    except ValueError as e:  # split fail
         pdf_prefix = 'urn:x-pdf:'
         if uri.startswith(pdf_prefix):
             return uri
@@ -76,7 +96,7 @@ def uri_normalization(uri):
             print('AAAAAAAAAAAAAAAAAAAAAAAAAAA', uri)
             return 'THIS URI IS GARBAGE AND THIS IS ITS NORMALIZED FORM'
         else:
-            raise TypeError(uri)
+            raise TypeError(uri) from e
 
 
 def disambiguate_uris(uris):

@@ -253,6 +253,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             # if we assume that all claims are identical
             # FIXME if there is a new claim type then we are toast though :/
             # the modelling here assumes that title etc can't change
+            #print(id, uri, uri_normed, row['user'], row['uri'], row['created'])
             if do_claims:
                 for claim in claims:
                     #print(id, uri, uri_normed, claim['claimant'], claim['type'], claim['value'])
