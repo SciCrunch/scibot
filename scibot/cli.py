@@ -60,7 +60,11 @@ def main():
             rows = [a._row for a in annos]
             AnnoSync = AnnoSyncFactory(session)
             cur_sync = AnnoSync(config.api_token, config.username, config.group)
-            docs = list(cur_sync.h_create_documents(rows[:100]))
+
+            hdocs = list(cur_sync.h_create_documents(rows[:100]))
+            session.flush()
+            qdocs = list(cur_sync.q_prepare_docs(rows[100:200]))
+            session.flush()
             embed()
 
 

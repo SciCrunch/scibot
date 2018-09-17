@@ -6,6 +6,10 @@ from h.schemas.annotation import CreateAnnotationSchema
 from pyontutils.utils import anyMembers
 from IPython import embed
 
+bad_uris = ('/articles/6-124/v2',  # FIXME don't hardcode this >_<
+            '//bmcbiol.biomedcentral.com/articles/10.1186/s12915-016-0257-2')
+
+
 def uri_normalization(uri):
     """ NOTE: this does NOT produce uris """
     try:
@@ -55,12 +59,17 @@ def uri_normalization(uri):
                           .replace('.pdf', '')
                           # note .full.pdf is a thing
                           )
+        elif 'articles/PMC' in no_scheme:
+            normalized = no_scheme.rstrip('/')  # annoying
         else:
             normalized = no_scheme
     except ValueError:  # split fail
         pdf_prefix = 'urn:x-pdf:'
         if uri.startswith(pdf_prefix):
             return uri
+        elif uri in bad_uris:
+            print('AAAAAAAAAAAAAAAAAAAAAAAAAAA', uri)
+            return 'THIS URI IS GARBAGE AND THIS IS ITS NORMALIZED FORM'
         else:
             raise TypeError(uri)
 
@@ -68,9 +77,8 @@ def uri_normalization(uri):
 
 
 def disambiguate_uris(uris):
-    bad = '/articles/6-124/v2', '//bmcbiol.biomedcentral.com/articles/10.1186/s12915-016-0257-2'
     dd = defaultdict(set)
-    _ = [dd[uri_normalization(uri)].add(uri) for uri in uris if uri not in bad]
+    _ = [dd[uri_normalization(uri)].add(uri) for uri in uris if uri not in bad_uris]
     return dict(dd)
 
 

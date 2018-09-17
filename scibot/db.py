@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime
 from itertools import chain
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 import json
 from h import models
 from h.db import init
@@ -138,6 +138,130 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         datas = [quickload(r) for r in rows]
         self.log.debug(f'quickload complete for {len(rows)} rows')
 
+        id_doc = self.q_prepare_docs(rows)
+        session.add_all((d for i, d in id_doc))
+        self.log.debug('add all done')
+        self.session.flush()  # get ids without commit
+        self.log.debug('flush done')
+        anno_id_to_doc_id = {i:d.id for i, d in id_doc}
+
+        self.log.debug('values sets done')
+
+        *values_templates, values, bindparams = makeParamsValues(*self.values_sets(datas, anno_id_to_doc_id),
+                                                                 types=self.types(datas))
+        sql = text(f'INSERT INTO annotation ({", ".join(keys)}) VALUES {", ".join(values_templates)}')
+        sql = sql.bindparams(*bindparams)
+        try:
+            self.session.execute(sql, values)
+        except BaseException as e:
+            print('YOU ARE IN ERROR SPACE')
+            embed()
+
+        self.log.debug('execute done')
+
+        self.session.flush()
+        self.log.debug('flush done')
+
+        embed()
+        return
+        self.session.commit()
+        self.log.debug('commit done')
+
+    def values_sets(self, datas, anno_to_doc):
+        def fix_reserved(k):
+            if k == 'references':
+                k = '"references"'
+
+            return k
+
+        keys = [fix_reserved(k) for k in datas[0].keys()] + ['document_id']
+        def type_fix(k, v):  # TODO is this faster or is type_fix?
+            if isinstance(v, dict):
+                return json.dumps(v)  # FIXME perf?
+            elif isinstance(v, list):
+                if any(isinstance(e, dict) for e in v):
+                    return json.dumps(v)  # FIXME perf?
+            return v
+
+        def make_vs(d):
+            id = d['id']
+            document_id = anno_to_doc[id].id
+            return [type_fix(k, v) for k, v in d.items()] + [document_id],  # don't miss the , to make this a value set
+
+        yield from (make_vs(d) for d in datas)
+
+    def types(self, datas):
+        def make_types(d):
+            def inner(k):
+                if k == 'id':
+                    return URLSafeUUID
+                elif k == 'references':
+                    return ARRAY(URLSafeUUID)
+                else:
+                    return None
+            return [inner(k) for k in d] + [None]  # note this is continuous there is no comma
+
+        yield from (make_types(d) for d in datas)
+
+    def uri_records(self, row):
+        uri = row['uri']
+        return uri, uri_normalization(uri), quickuri(row)
+
+    def q_prepare_docs(self, rows):
+        existing_unnormed = {r.uri:r.document_id
+                             for r in self.session.execute('SELECT uri, document_id FROM document_uri')}
+        _existing = defaultdict(set)
+        _ = [_existing[uri_normalization(uri)].add(docid)
+             for uri, docid in existing_unnormed.items()]
+        assert not [_ for _ in _existing.values() if len(_) > 1]  # TODO proper handling for this case
+        h_existing_unnormed = {uri_normalize(uri):docid
+                               for uri, docid in existing_unnormed.items()}
+        existing = {k:next(iter(v)) for k, v in _existing.items()}  # FIXME issues when things get big
+
+        new_docs = {}
+        for row in sorted(rows, key=lambda r: r['created']):
+            id = row['id']
+            uri, uri_normed, (created, updated, claims) = self.uri_records(row)
+            try:
+                docid = existing[uri_normed]
+                doc = models.Document(id=docid)
+                do_claims = False
+            except KeyError:
+                if uri_normed not in new_docs:
+                    do_claims = True
+                    doc = models.Document(created=created, updated=updated)
+                    self.session.add(doc)  # TODO perf testing vs add_all
+                    new_docs[uri_normed] = doc
+                else:
+                    do_claims = False
+                    doc = new_docs[uri_normed]
+
+            yield id, doc
+
+            if uri_normalize(uri) not in h_existing_unnormed:
+                h_existing_unnormed[uri_normalize(uri)] = doc
+                # TODO do these get added automatically if their doc gets added but exists?
+                doc_uri = models.DocumentURI(document=doc,
+                                             claimant=uri,
+                                             uri=uri,
+                                             type='self-claim',
+                                             created=created,
+                                             updated=updated)
+
+            # because of how this schema is designed
+            # the only way that this can be fast is
+            # if we assume that all claims are identical
+            # FIXME if there is a new claim type then we are toast though :/
+            # the modelling here assumes that title etc can't change
+            if do_claims:
+                for claim in claims:
+                    models.DocumentMeta(document=doc,
+                                        created=created,
+                                        updated=updated,
+                                        **claim)
+
+
+        return
         uris = {uri_normalize(j['uri']):quickuri(j)
                 for j in sorted(rows,
                                 # newest first so that the oldest value will overwrite
@@ -165,57 +289,6 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                 self.session.flush()  # get ids without commit
                 self.log.debug('flush done')
 
-            def fix_reserved(k):
-                if k == 'references':
-                    k = '"references"'
-
-                return k
-
-        keys = [fix_reserved(k) for k in datas[0].keys()] + ['document_id']
-        def type_fix(k, v):  # TODO is this faster or is type_fix?
-            if isinstance(v, dict):
-                return json.dumps(v)  # FIXME perf?
-            elif isinstance(v, list):
-                if any(isinstance(e, dict) for e in v):
-                    return json.dumps(v)  # FIXME perf?
-            return v
-
-        def make_vs(d):
-            document_id = dbdocs[uri_normalization(d['target_uri'])].id  # FIXME
-            return [type_fix(k, v) for k, v in d.items()] + [document_id],  # don't miss the , to make this a value set
-
-        def make_types(d):
-            def inner(k):
-                if k == 'id':
-                    return URLSafeUUID
-                elif k == 'references':
-                    return ARRAY(URLSafeUUID)
-                else:
-                    return None
-            return [inner(k) for k in d] + [None]  # note this is continuous there is no comma
-
-        values_sets = [make_vs(d) for d in datas]
-        types = [make_types(d) for d in datas]
-        self.log.debug('values sets done')
-
-        *values_templates, values, bindparams = makeParamsValues(*values_sets, types=types)
-        sql = text(f'INSERT INTO annotation ({", ".join(keys)}) VALUES {", ".join(values_templates)}')
-        sql = sql.bindparams(*bindparams)
-        try:
-            self.session.execute(sql, values)
-        except BaseException as e:
-            embed()
-
-        self.log.debug('execute done')
-
-        self.session.flush()
-        self.log.debug('flush done')
-
-        embed()
-        return
-        self.session.commit()
-        self.log.debug('commit done')
-
     def h_prepare_document(self, row):
         datum = validate(row)
         document_dict = datum.pop('document')
@@ -225,23 +298,23 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         return (*dd, document_uri_dicts, document_meta_dicts)
 
     def h_create_documents(self, rows):
-        seen = set()
-        for row in sorted(rows, key=lambda r:r['updated']):
+        seen = {}
+        for row in sorted(rows, key=lambda r:r['created']):
+            id = row['id']
             p = self.h_prepare_document(row)
             id, target_uri, created, updated, document_uri_dicts, document_meta_dicts = p
             if target_uri in seen:
-                continue
+                yield id, seen[target_uri]
             else:
-                seen.add(target_uri)
-
-            document = update_document_metadata(  # TODO update normalization rules
-                self.session,
-                target_uri,
-                document_meta_dicts,
-                document_uri_dicts,
-                created=created,
-                updated=updated)
-            yield row['id'], document
+                document = update_document_metadata(  # TODO update normalization rules
+                    self.session,
+                    target_uri,
+                    document_meta_dicts,
+                    document_uri_dicts,
+                    created=created,
+                    updated=updated)
+                seen[target_uri] = document
+                yield id, document
 
     def sync_anno_stream(self, search_after=None, stop_at=None):
         """ streaming one anno at a time version of sync """
