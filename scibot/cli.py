@@ -46,6 +46,7 @@ def main():
         'TODO'
 
     elif args['debug']:
+        from time import time
         session = getSession(echo=args['--debug'])
         if True:
             dcount = {r.uri:r.document_id
@@ -61,10 +62,23 @@ def main():
             AnnoSync = AnnoSyncFactory(session)
             cur_sync = AnnoSync(config.api_token, config.username, config.group)
 
-            hdocs = list(cur_sync.h_create_documents(rows[:100]))
+            t0 = time()
+            hdocs = list(cur_sync.h_create_documents(rows))
+            t1 = time()
             session.flush()
-            qdocs = list(cur_sync.q_prepare_docs(rows[100:200]))
+            t2 = time()
+            hload = t1 - t0
+            hflush = t2 - t1
+            print('h:', hload, hflush)
+            session.rollback()
+            t3 = time()
+            qdocs = list(cur_sync.q_prepare_docs(rows))
+            t4 = time()
             session.flush()
+            t5 = time()
+            qload =  t4 - t3
+            qflush = t5 - t4
+            print('q:', qload, qflush)
             embed()
 
 
