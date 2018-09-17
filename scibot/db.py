@@ -255,6 +255,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             # the modelling here assumes that title etc can't change
             if do_claims:
                 for claim in claims:
+                    #print(id, uri, uri_normed, claim['claimant'], claim['type'], claim['value'])
                     models.DocumentMeta(document=doc,
                                         created=created,
                                         updated=updated,

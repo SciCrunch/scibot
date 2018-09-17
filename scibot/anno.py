@@ -13,7 +13,8 @@ bad_uris = ('/articles/6-124/v2',  # FIXME don't hardcode this >_<
 def uri_normalization(uri):
     """ NOTE: this does NOT produce uris """
     try:
-        _, no_scheme = uri.split('://', 1)
+        no_fragment, *_frag = uri.rsplit('#', 1)
+        _scheme, no_scheme = no_fragment.split('://', 1)
         if anyMembers(no_scheme,
                       'acs.org',
                       'ahajournals.org',

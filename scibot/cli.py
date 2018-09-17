@@ -58,10 +58,12 @@ def main():
             uris = set(a.uri for a in annos)
             dd = disambiguate_uris(uris)
             multi = [v for v in dd.values() if len(v) > 1]
-            rows = [a._row for a in annos]
+            _rows = [a._row for a in annos]
             AnnoSync = AnnoSyncFactory(session)
             cur_sync = AnnoSync(config.api_token, config.username, config.group)
 
+            #rows = [r for r in _rows if 'articles/4-42/' in r['uri']]
+            rows = _rows
             t0 = time()
             hdocs = list(cur_sync.h_create_documents(rows))
             t1 = time()
