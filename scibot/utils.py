@@ -2,8 +2,26 @@
 
 import hashlib
 import logging
-from pyontutils.utils import Async, deferred, chunk_list
+import requests
+from pyontutils.utils import Async, deferred, chunk_list, anyMembers
 from IPython import embed
+
+
+def DOI(doi):
+    return 'https://doi.org/' + doi
+
+
+def PMID(pmid):
+    return pmid.replace('PMID:', 'https://www.ncbi.nlm.nih.gov/pubmed/')
+
+
+def get_pmid_from_url(url):
+    if anyMembers(url,
+                  'www.ncbi.nlm.nih.gov/pubmed/',
+                  'europepmc.org/abstract/MED/'):
+        # TODO validate the suffix
+        _, suffix = url.rsplit('/', 1)
+        return 'PMID:' + suffix
 
 
 def makeSimpleLogger(name):
@@ -51,3 +69,19 @@ def zap_deleted(get_annos):
 
     # TODO actually remove them
     embed()
+
+
+def resolution_chain(doi):
+    doi = doi  # TODO
+    s = requests.Session()
+    head = requests.head(doi)
+    yield head.url
+    while head.is_redirect and head.status_code < 400:  # FIXME redirect loop issue
+        yield head.next.url
+        head = s.send(head.next)
+        yield head.url
+        if not head.is_redirect:
+            break
+
+    if head.status_code >= 400:
+        raise LoadError(f'Nothing found at {self.name}\n')

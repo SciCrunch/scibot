@@ -8,13 +8,14 @@ from h.db import init
 from h.util.uri import normalize as uri_normalize
 from h.db.types import _get_hex_from_urlsafe, _get_urlsafe_from_hex, URLSafeUUID
 from h.util.user import split_user
+from h.models.document import update_document_metadata
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 from sqlalchemy.orm.session import sessionmaker
 from sqlalchemy.dialects.postgresql import ARRAY
 from hyputils.hypothesis import Memoizer
 from scibot import config
-from scibot.anno import quickload, quickuri, add_doc_all
+from scibot.anno import quickload, quickuri, add_doc_all, validate, uri_normalization
 from scibot.utils import makeSimpleLogger
 from interlex.core import makeParamsValues  # FIXME probably need a common import ...
 from IPython import embed
@@ -144,21 +145,31 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                                 reverse=True)}
         self.log.debug('uris done')
 
-        dbdocs = {uri:add_doc_all(uri_normalize(uri), created, updated, claims)
-                for uri, (created, updated, claims) in uris.items()}
-        self.log.debug('dbdocs done')
+        if False:  # DOCS
+            pass
+        else:
+            dcount = {r.uri:r.document_id  # FIXME can get nasty, but this is bulk
+                    for r in self.session.execute('SELECT uri, document_id FROM document_uri')}
+            if dcount:
+                #self.session.bulk_insert_mappings(Document)
+                embed()
+                return
+            else:
+                dbdocs = {uri:add_doc_all(uri, created, updated, claims)  # FIXME default_dict, sort reverse too?
+                        for uri, (created, updated, claims) in uris.items()}
+                self.log.debug('dbdocs done')
 
-        vals = list(dbdocs.values())
-        self.session.add_all(vals)  # this is super fast locally and hangs effectively forever remotely :/ wat
-        self.log.debug('add all done')
-        self.session.flush()  # get ids without commit
-        self.log.debug('flush done')
+                vals = list(dbdocs.values())
+                self.session.add_all(vals)  # this is super fast locally and hangs effectively forever remotely :/ wat
+                self.log.debug('add all done')
+                self.session.flush()  # get ids without commit
+                self.log.debug('flush done')
 
-        def fix_reserved(k):
-            if k == 'references':
-                k = '"references"'
+            def fix_reserved(k):
+                if k == 'references':
+                    k = '"references"'
 
-            return k
+                return k
 
         keys = [fix_reserved(k) for k in datas[0].keys()] + ['document_id']
         def type_fix(k, v):  # TODO is this faster or is type_fix?
@@ -170,7 +181,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             return v
 
         def make_vs(d):
-            document_id = dbdocs[uri_normalize(d['target_uri'])].id
+            document_id = dbdocs[uri_normalization(d['target_uri'])].id  # FIXME
             return [type_fix(k, v) for k, v in d.items()] + [document_id],  # don't miss the , to make this a value set
 
         def make_types(d):
@@ -205,13 +216,47 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         self.session.commit()
         self.log.debug('commit done')
 
+    def h_prepare_document(self, row):
+        datum = validate(row)
+        document_dict = datum.pop('document')
+        document_uri_dicts = document_dict['document_uri_dicts']
+        document_meta_dicts = document_dict['document_meta_dicts']
+        dd = row['id'], datum['target_uri'], row['created'], row['updated']
+        return (*dd, document_uri_dicts, document_meta_dicts)
 
-    def sync_anno_stream(self,search_after=None, stop_at=None):
+    def h_create_documents(self, rows):
+        seen = set()
+        for row in sorted(rows, key=lambda r:r['updated']):
+            p = self.h_prepare_document(row)
+            id, target_uri, created, updated, document_uri_dicts, document_meta_dicts = p
+            if target_uri in seen:
+                continue
+            else:
+                seen.add(target_uri)
+
+            document = update_document_metadata(  # TODO update normalization rules
+                self.session,
+                target_uri,
+                document_meta_dicts,
+                document_uri_dicts,
+                created=created,
+                updated=updated)
+            yield row['id'], document
+
+    def sync_anno_stream(self, search_after=None, stop_at=None):
         """ streaming one anno at a time version of sync """
         for row in self.yield_from_api(search_after=last_updated, stop_at=stop_at):
             yield row, 'TODO'
             continue
             # TODO
+            datum = validate(row)  # roughly 30x slower than quickload
+            # the h code I'm calling assumes these are new annos
+            datum['id'] = row['id']
+            datum['created'] = row['created']
+            datum['updated'] = row['updated']
+            document_dict = datum.pop('document')
+            document_uri_dicts = document_dict['document_uri_dicts']
+            document_meta_dicts = document_dict['document_meta_dicts']
             a = [models.Annotation(**d,
                                    document_id=dbdocs[uri_normalize(d['target_uri'])].id)
                  for d in datas]  # slow

@@ -1,6 +1,78 @@
+from collections import defaultdict
 from h import models
 from h.util.uri import normalize as uri_normalize
+from h.models.document import update_document_metadata
 from h.schemas.annotation import CreateAnnotationSchema
+from pyontutils.utils import anyMembers
+from IPython import embed
+
+def uri_normalization(uri):
+    """ NOTE: this does NOT produce uris """
+    try:
+        _, no_scheme = uri.split('://', 1)
+        if anyMembers(no_scheme,
+                      'acs.org',
+                      'ahajournals.org',
+                      'biologicalpsychiatryjournal.com',
+                      'ebiomedicine.com',
+                      'fasebj.org',
+                      'frontiersin.org',
+                      'future-science.com',
+                      'hindawi.com',
+                      'ieee.org',
+                      'jclinepi.com',
+                      'jpeds.com',
+                      'liebertpub.com',
+                      'mitpressjournals.org',
+                      'molbiolcell.org',
+                      'molmetab.com',
+                      'neurobiologyofaging.org',
+                      'physiology.org',
+                      'sagepub.com',
+                      'sciencedirect.com',
+                      'tandfonline.com',
+                      'theriojournal.com',
+                      'wiley.com',):
+            # NOTE not all the above hit all of these
+            # almost all still resolve
+            normalized = (no_scheme
+                          .replace('/abstract', '')
+                          .replace('/abs', '')
+                          .replace('/full', '')
+                          .replace('/pdf', ''))
+        #elif ('sciencedirect.com' in no_scheme):
+            #normalized = (no_scheme
+                          #.replace('/abs', ''))
+        elif ('cell.com' in no_scheme):
+            normalized = (no_scheme  # FIXME
+                          .replace('/abstract', '/XXX')
+                          .replace('/fulltext', '/XXX'))
+        elif 'jneurosci.org' in no_scheme:
+            # TODO content/early -> resolution_chain(doi)
+            normalized = (no_scheme
+                          .replace('.short', '')
+                          .replace('.full', '')
+                          .replace('.pdf', '')
+                          # note .full.pdf is a thing
+                          )
+        else:
+            normalized = no_scheme
+    except ValueError:  # split fail
+        pdf_prefix = 'urn:x-pdf:'
+        if uri.startswith(pdf_prefix):
+            return uri
+        else:
+            raise TypeError(uri)
+
+    return normalized
+
+
+def disambiguate_uris(uris):
+    bad = '/articles/6-124/v2', '//bmcbiol.biomedcentral.com/articles/10.1186/s12915-016-0257-2'
+    dd = defaultdict(set)
+    _ = [dd[uri_normalization(uri)].add(uri) for uri in uris if uri not in bad]
+    return dict(dd)
+
 
 class FakeRequest:
     def __init__(self, json):
@@ -119,5 +191,5 @@ def add_doc_all(uri, created, updated, claims):  # batch only run once
 def quickuri(j):
     return (j['created'],
             j['updated'],
-            [{'claimant':uri_normalize(j['uri']), 'type':k, 'value':v}
+            [{'claimant':j['uri'], 'type':k, 'value':v}
              for k, v in j['document'].items()])

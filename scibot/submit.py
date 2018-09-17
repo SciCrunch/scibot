@@ -1,12 +1,5 @@
 from lxml import etree
-
-
-def DOI(doi):
-    return 'https://doi.org/' + doi
-
-
-def PMID(pmid):
-    return pmid.replace('PMID:', 'https://www.ncbi.nlm.nih.gov/pubmed/')
+from scibot.utils import DOI, PMID
 
 
 def annotate_doi_pmid(target_uri, doi, pmid, h, tags):  # TODO
