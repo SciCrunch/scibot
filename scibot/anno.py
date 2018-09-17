@@ -13,8 +13,11 @@ bad_uris = ('/articles/6-124/v2',  # FIXME don't hardcode this >_<
 def uri_normalization(uri):
     """ NOTE: this does NOT produce uris """
     try:
+        # universal fixes
         no_fragment, *_frag = uri.rsplit('#', 1)
-        _scheme, no_scheme = no_fragment.split('://', 1)
+        no_trailing_slash = no_fragment.rstrip('/')  # annoying
+        _scheme, no_scheme = no_trailing_slash.split('://', 1)
+        # specific fixes
         if anyMembers(no_scheme,
                       'acs.org',
                       'ahajournals.org',
@@ -60,10 +63,11 @@ def uri_normalization(uri):
                           .replace('.pdf', '')
                           # note .full.pdf is a thing
                           )
-        elif 'articles/PMC' in no_scheme:
-            normalized = no_scheme.rstrip('/')  # annoying
         else:
             normalized = no_scheme
+
+        return normalized
+
     except ValueError:  # split fail
         pdf_prefix = 'urn:x-pdf:'
         if uri.startswith(pdf_prefix):
@@ -73,8 +77,6 @@ def uri_normalization(uri):
             return 'THIS URI IS GARBAGE AND THIS IS ITS NORMALIZED FORM'
         else:
             raise TypeError(uri)
-
-    return normalized
 
 
 def disambiguate_uris(uris):

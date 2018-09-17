@@ -62,17 +62,22 @@ def main():
             AnnoSync = AnnoSyncFactory(session)
             cur_sync = AnnoSync(config.api_token, config.username, config.group)
 
-            #rows = [r for r in _rows if 'articles/4-42/' in r['uri']]
             rows = _rows
-            t0 = time()
-            hdocs = list(cur_sync.h_create_documents(rows))
-            t1 = time()
-            session.flush()
-            t2 = time()
-            hload = t1 - t0
-            hflush = t2 - t1
-            print('h:', hload, hflush)
-            session.rollback()
+            # rows = [r for r in _rows if 'articles/4-42/' in r['uri']]
+            # rows = [r for r in _rows if '10.1002/jnr.23615' in r['uri']]
+
+            if False:
+                t0 = time()
+                hdocs = list(cur_sync.h_create_documents(rows))
+                t1 = time()
+                session.flush()
+                t2 = time()
+                hload = t1 - t0
+                hflush = t2 - t1
+                print('h:', hload, hflush)
+                # h: 174.50015807151794 0.0007216930389404297
+                session.rollback()
+
             t3 = time()
             qdocs = list(cur_sync.q_prepare_docs(rows))
             t4 = time()
