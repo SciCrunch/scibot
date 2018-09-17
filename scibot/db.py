@@ -1,10 +1,13 @@
 from pathlib import Path
 from datetime import datetime
+from itertools import chain
+from collections import namedtuple
 import json
 from h import models
 from h.db import init
 from h.util.uri import normalize as uri_normalize
 from h.db.types import _get_hex_from_urlsafe, _get_urlsafe_from_hex, URLSafeUUID
+from h.util.user import split_user
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 from sqlalchemy.orm.session import sessionmaker
@@ -94,24 +97,42 @@ class DbQueryFactory:
 
 class AnnoSyncFactory(Memoizer, DbQueryFactory):
     log = makeSimpleLogger('scibot.db.sync')
-    convert = (datetime.isoformat,)
-    query = 'SELECT updated FROM annotation ORDER BY updated DESC LIMIT 1'
+    convert = (lambda d: datetime.isoformat(d) + '+00:00',)  # FIXME hack
+    query = 'SELECT updated FROM annotation'
+    condition = 'WHERE groupid = :groupid ORDER BY updated DESC LIMIT 1'  # default condition
 
     def __init__(self, api_token=config.api_token, username=config.username,
                  group=config.group, memoization_file=None, condition=''):
         super().__init__(memoization_file, api_token=api_token, username=username, group=group)
-        self.condition = condition
+        if condition:
+            self.condition = condition
 
     def sync_annos(self, search_after=None, stop_at=None):
         """ batch sync """
+        try:
+            if self.group == '__world__':
+                self.condition = 'WHERE groupid = :groupid AND userid = :userid '
+                userid = f'acct:{self.username}@hypothes.is'  # FIXME other registration authorities
+                last_updated = next(self.execute(params={'groupid':self.group,
+                                                         'userid':userid})).updated
+            else:
+                last_updated = next(self.execute(params={'groupid':self.group})).updated
+            self.log.debug(f'last updated at {last_updated} for {self.group}')
+        except StopIteration:
+            last_updated = None
+            self.log.debug(f'no annotations on record for {self.group}')
+
         if self.memoization_file is None:
-            try:
-                last_updated = next(self)
-            except StopIteration:
-                last_updated = None
             rows = list(self.yield_from_api(search_after=last_updated, stop_at=stop_at))
         else:
-            rows = [a._row for a in self.get_annos()]
+            if last_updated:
+                rows = [a._row for a in self.get_annos() if a.updated > last_updated]
+            else:
+                rows = [a._row for a in self.get_annos()]
+
+        if not rows:
+            self.log.info(f'all annotations are up to date')
+            return
 
         datas = [quickload(r) for r in rows]
         self.log.debug(f'quickload complete for {len(rows)} rows')
@@ -130,19 +151,9 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         vals = list(dbdocs.values())
         self.session.add_all(vals)  # this is super fast locally and hangs effectively forever remotely :/ wat
         self.log.debug('add all done')
-        embed()
         self.session.flush()  # get ids without commit
         self.log.debug('flush done')
 
-        """
-        a = [models.Annotation(**d,
-                                document_id=dbdocs[uri_normalize(d['target_uri'])].id)
-                for d in datas]  # slow
-        self.log.debug('making annotations')
-        self.session.add_all(a)
-        self.log.debug('adding all annotations')
-
-        """
         def fix_reserved(k):
             if k == 'references':
                 k = '"references"'
@@ -179,14 +190,12 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         *values_templates, values, bindparams = makeParamsValues(*values_sets, types=types)
         sql = text(f'INSERT INTO annotation ({", ".join(keys)}) VALUES {", ".join(values_templates)}')
         sql = sql.bindparams(*bindparams)
-        #sql = sql.bindparams(bindparam('id', URLSafeUUID), bindparam('references', ARRAY(URLSafeUUID)))
         try:
             self.session.execute(sql, values)
         except BaseException as e:
             embed()
 
         self.log.debug('execute done')
-        #"""
 
         self.session.flush()
         self.log.debug('flush done')
@@ -211,8 +220,6 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             self.log.debug('adding all annotations')
 
 
-
-
 def uuid_to_urlsafe(uuid):
     return _get_urlsafe_from_hex(uuid.hex)
 
@@ -220,8 +227,8 @@ def uuid_to_urlsafe(uuid):
 class AnnoQueryFactory(DbQueryFactory):
     convert = (
         uuid_to_urlsafe,
-        datetime.isoformat,
-        datetime.isoformat,
+        lambda d: datetime.isoformat(d) + '+00:00',  # FIXME hack WARNING MAKE SURE ALL TIMESTAMPS THAT GO IN
+        lambda d: datetime.isoformat(d) + '+00:00',  # FIXME hack ARE DERIVED FROM datetime.utcnow()
         None,
         lambda userid: split_user(userid)['username'],
         None,

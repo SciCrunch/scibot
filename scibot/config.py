@@ -67,6 +67,6 @@ def _post(group_hash):
 memfile = group_to_memfile(group, _post)
 
 if group_staging == '__world__':
-    pmemfile = '/tmp/scibot-public-annos.pickle'
+    pmemfile = f'/tmp/annos-__world__-{username}.pickle'
 else:
     pmemfile = group_to_memfile(group_staging)

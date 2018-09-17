@@ -34,9 +34,12 @@ def main():
     if args['api-sync']:
         session = getSession(echo=args['--debug'])
         AnnoSync = AnnoSyncFactory(session)
-        cur_sync = AnnoSync(config.api_token, config.username, config.group, config.memfile)
+        cur_sync = AnnoSync(config.api_token, config.username,
+                            config.group, config.memfile)
         cur_sync.sync_annos()
-        #AnnoSync(config.api_token, config.username, config.group_staging, config.pmemfile)
+        pub_sync = AnnoSync(config.api_token, config.username,
+                            config.group_staging, config.pmemfile)
+        pub_sync.sync_annos()
     if args['ws-sync']:
         'TODO'
 
