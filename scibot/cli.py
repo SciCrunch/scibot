@@ -75,14 +75,17 @@ def main():
             # rows = [r for r in _rows if 'fasebj.org' in r['uri']]
 
             check = False
-            cur_sync.sync_annos(api_rows=rows, check=check)
+
+            cur_sync.memoization_file = config.memfile
+            cur_sync.sync_annos(check=check)
+
+
             return
+            cur_sync.sync_annos(api_rows=rows, check=check)
             # when remote the upload bandwidth is now the limiting factor
             session.rollback()
             cur_sync.sync_annos(check=check)
             session.rollback()
-            cur_sync.memoization_file = config.memfile
-            cur_sync.sync_annos(check=check)
             embed()
 
 

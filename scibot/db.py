@@ -223,10 +223,10 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         if check:
             do_check()
 
-        embed()
-        return
-        self.session.commit()
-        self.log.debug('commit done')
+            self.session.commit()
+            self.log.debug('commit done')
+        else:
+            embed()
 
     def q_create_annos(self, anno_records, anno_id_to_doc_id):
         *values_templates, values, bindparams = makeParamsValues(*self.values_sets(anno_records, anno_id_to_doc_id),
