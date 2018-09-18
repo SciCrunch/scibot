@@ -141,14 +141,13 @@ def main():
     from IPython import embed
     from pyontutils.core import makeGraph
     import pyontutils.graphml_to_ttl as gt
+    from pyontutils.utils import working_dir
     from pyontutils.graphml_to_ttl import workflow as wf, RRIDCUR
     from pyontutils.closed_namespaces import rdf, rdfs, owl
     from itertools import chain
     from rdflib import ConjunctiveGraph, BNode
-    rridfile = '~/ni/dev/rrid/scibot/workflow.graphml'
-    paperfile = '~/ni/dev/rrid/scibot/paper-id-workflow.graphml'
-    rridpath = Path(rridfile).expanduser()
-    paperpath = Path(paperfile).expanduser()
+    rridpath = Path(__file__).parent / '../docs/workflow-rrid.graphml'
+    paperpath = Path(__file__).parent / '../docs/workflow-paper-id.graphml'
     cgraph = ConjunctiveGraph()
     gt.WorkflowMapping(rridpath.as_posix()).graph(cgraph)
     gt.PaperIdMapping(paperpath.as_posix()).graph(cgraph)
