@@ -17,6 +17,12 @@ def uri_normalization(uri):
         no_fragment, *_frag = uri.rsplit('#', 1)
         no_trailing_slash = no_fragment.rstrip('/')  # annoying
         _scheme, no_scheme = no_trailing_slash.split('://', 1)
+
+        # special cases
+        if 'frontiersin.org' in no_scheme:
+            # og:url on frontiers is incorrect
+            no_scheme = no_scheme.replace('article/', 'articles/')
+
         # specific fixes
         if anyMembers(no_scheme,
                       'acs.org',

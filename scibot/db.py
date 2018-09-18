@@ -88,6 +88,49 @@ class DbQueryFactory:
             for result in chain((first,), gen):
                 yield Result(*(c(v) if c else v for c, v in zip(self.convert, result)))
 
+    @staticmethod
+    def get_cols(model, no_id=True):
+        cols = model.__table__.columns.keys()
+        if no_id:
+            cols.remove('id')
+
+        return cols
+
+    def _table_insert(self, table_things, table, cols):
+        def do_defaults(thing, cols):
+            for col in cols:
+                value = getattr(thing, col)
+                if value is None:
+                    c = table.columns[col]
+                    if c.default:  # TODO nullable check here?
+                        value = c.default.arg
+
+                yield value
+
+        *templates, params = makeParamsValues(
+            *([list(do_defaults(t, cols))]
+                for t in table_things))
+
+        col_expr = f'({", ".join(cols)})'
+        sql = (f'INSERT INTO {table.name} {col_expr} VALUES ' +
+                ', '.join(templates) +
+                'RETURNING id')
+
+        for thing, rp in zip(table_things, self.session.execute(sql, params)):
+            thing.id = rp.id
+
+    def insert_bulk(self, things, column_mapping=None, keep_id=False):
+        # this works around the orm so be sure
+        # to call session.expunge_all when done
+        tables = set(t.__table__ for t in things)
+        for table in tables:
+            table_things = [t for t in things if t.__table__ == table]
+            if column_mapping and table.name in column_mapping:
+                cols = column_mapping[table.name]
+            else:
+                cols = self.get_cols(table_things[0].__class__)
+            self._table_insert(table_things, table, cols)
+
     def __call__(self, params=None):
         return self.execute(params)
 
@@ -108,8 +151,11 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         if condition:
             self.condition = condition
 
-    def sync_annos(self, search_after=None, stop_at=None):
-        """ batch sync """
+    def __call__(self):
+        """ block upstream call which does undesirable things """
+        raise NotImplemented
+
+    def get_api_rows(self, search_after=None, stop_at=None):
         try:
             if self.group == '__world__':
                 self.condition = 'WHERE groupid = :groupid AND userid = :userid '
@@ -121,7 +167,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             self.log.debug(f'last updated at {last_updated} for {self.group}')
         except StopIteration:
             last_updated = None
-            self.log.debug(f'no annotations on record for {self.group}')
+            self.log.debug(f'no annotations in database for {self.group}')
 
         if self.memoization_file is None:
             rows = list(self.yield_from_api(search_after=last_updated, stop_at=stop_at))
@@ -131,51 +177,80 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             else:
                 rows = [a._row for a in self.get_annos()]
 
-        if not rows:
-            self.log.info(f'all annotations are up to date')
-            return
+        return rows
 
-        datas = [quickload(r) for r in rows]
-        self.log.debug(f'quickload complete for {len(rows)} rows')
+    def sync_annos(self, search_after=None, stop_at=None, api_rows=None, check=False):
+        """ batch sync """
 
-        id_doc = self.q_prepare_docs(rows)
-        #session.add_all((d for i, d in id_doc))
-        self.session.bulk_save_objects((d for i, d in id_doc))
-        self.log.debug('add all done')
-        self.session.flush()  # get ids without commit
-        self.log.debug('flush done')
-        anno_id_to_doc_id = {i:d.id for i, d in id_doc}
+        if not api_rows:
+            # TODO stream this using generators?
+            api_rows = self.get_api_rows(search_after, stop_at)
+            if not api_rows:
+                self.log.info(f'all annotations are up to date')
+                return
 
-        self.log.debug('values sets done')
+        anno_records = [quickload(r) for r in api_rows]
+        self.log.debug(f'quickload complete for {len(api_rows)} api_rows')
 
-        *values_templates, values, bindparams = makeParamsValues(*self.values_sets(datas, anno_id_to_doc_id),
-                                                                 types=self.types(datas))
-        sql = text(f'INSERT INTO annotation ({", ".join(keys)}) VALUES {", ".join(values_templates)}')
-        sql = sql.bindparams(*bindparams)
-        try:
-            self.session.execute(sql, values)
-        except BaseException as e:
-            print('YOU ARE IN ERROR SPACE')
-            embed()
+        anno_id_to_doc_id = self.q_create_docs(api_rows)
+        self.q_create_annos(anno_records, anno_id_to_doc_id)
 
-        self.log.debug('execute done')
+        def do_check():
+            self.log.debug('checking for consistency')
+            annos = self.session.query(models.Annotation).all()
+            #docs = self.session.query(models.Document).all()
+            durs = self.session.query(models.DocumentURI).all()
+            dd = defaultdict(set)
+            _ = [dd[d.document_id].add(d.uri) for d in durs]
+            dd = dict(dd)
+            #dms = self.session.query(models.DocumentMeta).all()
+            #doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document.id]  # super slow due to orm fetches
+            doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document_id]
+            assert not doc_mismatch, doc_mismatch
+            # don't use the orm to do this, it is too slow even if you send the other queries above
+            uri_mismatch = [(a.target_uri, dd[a.document_id], a)
+                            for a in annos
+                            if a.target_uri not in dd[a.document_id]]
+            # NOTE hypothesis only allows 1 record per normalized uri, so we have to normalize here as well
+            maybe_mismatch = set(frozenset(s) for u, s, a in uri_mismatch if not s.add(u))
+            actually_mismatch = set(s for s in maybe_mismatch if len(frozenset(uri_normalize(u) for u in s)) > 1)
+            # there should be more of these maybe?
+            assert not actually_mismatch, actually_mismatch
 
-        self.session.flush()
-        self.log.debug('flush done')
+        if check:
+            do_check()
 
         embed()
         return
         self.session.commit()
         self.log.debug('commit done')
 
-    def values_sets(self, datas, anno_to_doc):
+    def q_create_annos(self, anno_records, anno_id_to_doc_id):
+        *values_templates, values, bindparams = makeParamsValues(*self.values_sets(anno_records, anno_id_to_doc_id),
+                                                                 types=self.types(anno_records))
+        rec_keys = self.get_rec_keys(anno_records)
+        sql = text(f'INSERT INTO annotation ({", ".join(rec_keys)}) VALUES {", ".join(values_templates)}')
+        sql = sql.bindparams(*bindparams)
+        try:
+            self.session.execute(sql, values)
+            self.log.debug('anno execute done')
+        except BaseException as e:
+            self.log.error('YOU ARE IN ERROR SPACE')
+            embed()
+
+        self.session.flush()
+        self.log.debug('anno flush done')
+
+    def get_rec_keys(self, anno_records):
         def fix_reserved(k):
             if k == 'references':
                 k = '"references"'
 
             return k
 
-        keys = [fix_reserved(k) for k in datas[0].keys()] + ['document_id']
+        return [fix_reserved(k) for k in anno_records[0].keys()] + ['document_id']
+
+    def values_sets(self, anno_records, anno_id_to_doc_id):
         def type_fix(k, v):  # TODO is this faster or is type_fix?
             if isinstance(v, dict):
                 return json.dumps(v)  # FIXME perf?
@@ -186,10 +261,11 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
 
         def make_vs(d):
             id = d['id']
-            document_id = anno_to_doc[id].id
+            document_id = anno_id_to_doc_id[id]
             return [type_fix(k, v) for k, v in d.items()] + [document_id],  # don't miss the , to make this a value set
 
-        yield from (make_vs(d) for d in datas)
+        yield from (make_vs(d) for d in anno_records)
+        self.log.debug('anno values sets done')
 
     def types(self, datas):
         def make_types(d):
@@ -204,7 +280,8 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
 
         yield from (make_types(d) for d in datas)
 
-    def uri_records(self, row):
+    @staticmethod
+    def uri_records(row):
         uri = row['uri']
         return uri, uri_normalization(uri), quickuri(row)
 
@@ -219,7 +296,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                                for uri, docid in existing_unnormed.items()}
         existing = {k:next(iter(v)) for k, v in _existing.items()}  # FIXME issues when things get big
 
-        new_docs = {}
+        new_docs = {}  # FIXME this is completely opaque since it is not persisted anywhere
         for row in sorted(rows, key=lambda r: r['created']):
             id = row['id']
             uri, uri_normed, (created, updated, claims) = self.uri_records(row)
@@ -240,6 +317,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             yield id, doc
 
             if uri_normalize(uri) not in h_existing_unnormed:
+                # NOTE allowing only the normalized uri can cause confusion (i.e. see checks in sync_annos)
                 h_existing_unnormed[uri_normalize(uri)] = doc
                 # TODO do these get added automatically if their doc gets added but exists?
                 doc_uri = models.DocumentURI(document=doc,
@@ -265,34 +343,26 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                                              **claim)
                     yield None, dm
 
+    def q_create_docs(self, rows):
+        ids_docs = list(self.q_prepare_docs(rows))
+        docs = sorted(set(d for i, d in ids_docs if i), key=lambda d:d.created)
+        uri_meta = list(d for i, d in ids_docs if not i)
+        assert len(uri_meta) == len(set(uri_meta))
 
-        return
-        uris = {uri_normalize(j['uri']):quickuri(j)
-                for j in sorted(rows,
-                                # newest first so that the oldest value will overwrite
-                                key=lambda j:j['created'],
-                                reverse=True)}
-        self.log.debug('uris done')
+        # TODO skip the ones with document ids
+        self.insert_bulk(docs, {'document':['created', 'updated']})
 
-        if False:  # DOCS
-            pass
-        else:
-            dcount = {r.uri:r.document_id  # FIXME can get nasty, but this is bulk
-                    for r in self.session.execute('SELECT uri, document_id FROM document_uri')}
-            if dcount:
-                #self.session.bulk_insert_mappings(Document)
-                embed()
-                return
-            else:
-                dbdocs = {uri:add_doc_all(uri, created, updated, claims)  # FIXME default_dict, sort reverse too?
-                        for uri, (created, updated, claims) in uris.items()}
-                self.log.debug('dbdocs done')
+        for um in uri_meta:
+            um.document_id = um.document.id
+            um.document = None
+            del um.document  # have to have this or doceument overrides document_id
 
-                vals = list(dbdocs.values())
-                self.session.add_all(vals)  # this is super fast locally and hangs effectively forever remotely :/ wat
-                self.log.debug('add all done')
-                self.session.flush()  # get ids without commit
-                self.log.debug('flush done')
+        self.insert_bulk(uri_meta)
+        self.session.expunge_all()  # preven attempts to add unpersisted
+        self.session.flush()
+        self.log.debug('finished inserting docs')
+        anno_id_to_doc_id = {i:d.id for i, d in ids_docs}
+        return anno_id_to_doc_id
 
     def h_prepare_document(self, row):
         datum = validate(row)
