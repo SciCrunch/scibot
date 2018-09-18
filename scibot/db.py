@@ -200,22 +200,25 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             annos = self.session.query(models.Annotation).all()
             #docs = self.session.query(models.Document).all()
             durs = self.session.query(models.DocumentURI).all()
-            dd = defaultdict(set)
-            _ = [dd[d.document_id].add(d.uri) for d in durs]
-            dd = dict(dd)
+            doc_uris = defaultdict(set)
+            _ = [doc_uris[d.document_id].add(d.uri) for d in durs]
+            doc_uris = dict(doc_uris)
             #dms = self.session.query(models.DocumentMeta).all()
             #doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document.id]  # super slow due to orm fetches
             doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document_id]
             assert not doc_mismatch, doc_mismatch
             # don't use the orm to do this, it is too slow even if you send the other queries above
-            uri_mismatch = [(a.target_uri, dd[a.document_id], a)
+            uri_mismatch = [(a.target_uri, doc_uris[a.document_id], a)
                             for a in annos
-                            if a.target_uri not in dd[a.document_id]]
+                            if a.target_uri not in doc_uris[a.document_id]]
             # NOTE hypothesis only allows 1 record per normalized uri, so we have to normalize here as well
             maybe_mismatch = set(frozenset(s) for u, s, a in uri_mismatch if not s.add(u))
-            actually_mismatch = set(s for s in maybe_mismatch if len(frozenset(uri_normalize(u) for u in s)) > 1)
-            # there should be more of these maybe?
-            assert not actually_mismatch, actually_mismatch
+            h_mismatch = set(s for s in maybe_mismatch if len(frozenset(uri_normalize(u) for u in s)) > 1)
+            self.log.debug(f'h mismatch has {len(h_mismatch)} cases')
+            # the above normalization is not sufficient for cases where there are two
+            # hypothes.is normalized uris AND a scibot normalized uri as well
+            super_mismatch = set(s for s in h_mismatch if len(frozenset(uri_normalization(u) for u in s)) > 1)
+            assert not super_mismatch, super_mismatch
 
         if check:
             do_check()

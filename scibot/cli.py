@@ -72,9 +72,11 @@ def main():
             # rows = [r for r in _rows if '?term=Gene' in r['uri']]
             # rows = [r for r in _rows if 'index.php?' in r['uri']]
             # rows = [r for r in _rows if 'govhttp' in r['uri']]  # maximum wat
+            # rows = [r for r in _rows if 'fasebj.org' in r['uri']]
 
             check = False
             cur_sync.sync_annos(api_rows=rows, check=check)
+            return
             # when remote the upload bandwidth is now the limiting factor
             session.rollback()
             cur_sync.sync_annos(check=check)

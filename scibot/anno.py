@@ -22,6 +22,12 @@ def uri_normalization(uri):
         if 'frontiersin.org' in no_scheme:
             # og:url on frontiers is incorrect
             no_scheme = no_scheme.replace('article/', 'articles/')
+        elif 'fasebj.org' in no_scheme:  # FIXME this one has _all_ the variants :/
+            no_scheme = (no_scheme
+                         .replace('.abstract', '')
+                         .replace('.full', '')
+                         .replace('.pdf', '')
+            )
 
         # specific fixes
         if anyMembers(no_scheme,
