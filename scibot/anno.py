@@ -74,7 +74,6 @@ def uri_normalization(uri):
         elif 'govhttp' in no_scheme:
             # lol oh dear
             hrm, oops = no_scheme.split('govhttp')
-            print('Dear Jo pls help', 'https:' + oops.strip(':'))
             ded, wat = oops.split('//', 1)
             blargh, suffix = wat.split('/', 1)
             normalized = hrm + 'gov/pmc/' + suffix

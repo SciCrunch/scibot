@@ -139,7 +139,8 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         self.log.debug(f'quickload complete for {len(rows)} rows')
 
         id_doc = self.q_prepare_docs(rows)
-        session.add_all((d for i, d in id_doc))
+        #session.add_all((d for i, d in id_doc))
+        self.session.bulk_save_objects((d for i, d in id_doc))
         self.log.debug('add all done')
         self.session.flush()  # get ids without commit
         self.log.debug('flush done')
@@ -247,6 +248,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                                              type='self-claim',
                                              created=created,
                                              updated=updated)
+                yield None, doc_uri
 
             # because of how this schema is designed
             # the only way that this can be fast is
@@ -257,10 +259,11 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             if do_claims:
                 for claim in claims:
                     #print(id, uri, uri_normed, claim['claimant'], claim['type'], claim['value'])
-                    models.DocumentMeta(document=doc,
-                                        created=created,
-                                        updated=updated,
-                                        **claim)
+                    dm = models.DocumentMeta(document=doc,
+                                             created=created,
+                                             updated=updated,
+                                             **claim)
+                    yield None, dm
 
 
         return
