@@ -69,3 +69,8 @@ def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
                                                                   tags=new_tags + ['RRIDCUR:Unresolved'])
     found_rrids[exact] = r.json()['links']['incontext']
     return r
+
+def api_row_to_db(api_row):
+    # TODO insert the created annotation into our local store
+    # check for contention/consistency with the websocket
+    pass
