@@ -1,6 +1,4 @@
-import os
-import shutil
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(name='scibot',
       version='0.0.1',
@@ -22,10 +20,9 @@ setup(name='scibot',
           'hyputils',
           'lxml',
           'pyontutils',
-          'pyramid',
       ],
       extras_require={},
-      scripts=['bin/scibot-server', 'bin/scibot-dashboard'],
+      scripts=['bin/scibot-bookmarklet', 'bin/scibot-dashboard'],
       entry_points={
           'console_scripts': [
               'scibot-sync=scibot.sync:main'
