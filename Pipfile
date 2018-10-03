@@ -1,0 +1,8 @@
+[requires]
+python_version = '3.6'
+
+[packages]
+rdflib = {editable = true, ref = "master", git = "https://github.com/tgbugs/rdflib.git"}
+ontquery = {editable = true, ref = "master", git = "https://github.com/tgbugs/ontquery.git"}
+pyontutils = {editable = true, ref = "master", git = "https://github.com/tgbugs/pyontutils.git"}
+"e1839a8" = {path = ".", editable = true}
