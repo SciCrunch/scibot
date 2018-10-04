@@ -12,7 +12,8 @@ from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as 
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from scibot.config import api_token, username, group, group_staging, memfile, pmemfile
 from scibot.export import bad_tags, get_proper_citation
-from scibot.rrid import getDoi, get_pmid, annotate_doi_pmid
+from scibot.submit import annotate_doi_pmid
+from scibot.services import get_pmid
 from IPython import embed
 
 get_annos = Memoizer(memfile, api_token, username, group)
