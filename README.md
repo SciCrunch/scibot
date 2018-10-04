@@ -29,6 +29,13 @@ The found RRIDs are logged to the JavaScript console
 
 The found RRIDs are logged to timestamped files, along with the text and html of the article that was scanned for RRIDs
 
+## Setup on ubuntu 18.04
+Set `export PATH=~/.local/bin:${PATH}` in `~/.bashrc`
+1. `sudo apt-get install build-essential python3-dev libxml2-dev libxslt1-dev`
+2. `sudo pip3 install --user pip pipenv`
+3. `git clone https://github.com/SciCrunch/scibot.git`
+4. `cd scibot && pipenv install`
+
 ## Setup on amazon
 
 0. ssh in to the host that will serve the script
