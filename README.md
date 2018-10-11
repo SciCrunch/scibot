@@ -35,6 +35,9 @@ Set `export PATH=~/.local/bin:${PATH}` in `~/.bashrc`
 2. `sudo pip3 install --user pip pipenv`
 3. `git clone https://github.com/SciCrunch/scibot.git`
 4. `cd scibot && pipenv install`
+5. `pipenv shell` to get an environment with acess to all the required libraries.
+6. Inside the pipenv shell (after following steps 6-10 below) you should
+be able to run commands like `python scibot/export.py`.
 
 ## Setup on amazon
 
