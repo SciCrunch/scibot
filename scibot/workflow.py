@@ -1,3 +1,5 @@
+# asdf
+
 curator_exactrrid_unrecognized_rrid = None
 curator_exactrrid_syntax_error_rrid = None
 curator_exactrrid_incorrect_rrid = None
@@ -30,6 +32,7 @@ class Workflow:
 
     def annotation(self):
         pass
+
     def reply(self):
         pass
 
@@ -135,23 +138,64 @@ def test():
     w = [Workflow(a) for a in annos]
 
 
+class DashboardState:
+    def __init__(self, states):
+        pass
+
+    def add_anno(self, anno):
+        pass
+
+
+class AnnoAsTags:
+    def __init__(self, anno):
+        self.anno = anno
+
+    def exact(self):
+        pass
+
+    @property
+    def RRID(self):
+        pass
+
+    def pageNote(self):
+        pass
+
+    def putativeRRID(self):
+        pass
+
+
+def write(graph, path, format='nifttl'):
+    with open(path, 'wb') as f:
+        f.write(graph.serialize(format=format))
+
+
 def main():
+    from collections import defaultdict
     from pathlib import Path
     from rdflib import URIRef
     from IPython import embed
-    from pyontutils.core import makeGraph
+    from pyontutils.core import makeGraph, OntId, OntCuries
     import pyontutils.graphml_to_ttl as gt
-    from pyontutils.utils import working_dir
+    from pyontutils import combinators as cmb
+    from pyontutils.utils import working_dir, TermColors as tc
     from pyontutils.graphml_to_ttl import workflow as wf, RRIDCUR
     from pyontutils.closed_namespaces import rdf, rdfs, owl
     from itertools import chain
     from rdflib import ConjunctiveGraph, BNode
-    rridpath = Path(__file__).parent / '../docs/workflow-rrid.graphml'
-    paperpath = Path(__file__).parent / '../docs/workflow-paper-id.graphml'
+    #from rdflib.extras import infixowl as io
+
+    from pyontutils.graphml_to_ttl import WorkflowMapping, PaperIdMapping
+
+    docs = Path(__file__).parent.absolute().resolve().parent / 'docs'
+    rridpath = docs / 'workflow-rrid.graphml'
+    paperpath = docs / 'workflow-paper-id.graphml'
+
     cgraph = ConjunctiveGraph()
     gt.WorkflowMapping(rridpath.as_posix()).graph(cgraph)
-    gt.PaperIdMapping(paperpath.as_posix()).graph(cgraph)
+    gt.PaperIdMapping(paperpath.as_posix(), False).graph(cgraph)
+    write(cgraph, '/tmp/workflow.ttl')
     predicates = set(cgraph.predicates())
+    OntCuries({cp:str(ip) for cp, ip in cgraph.namespaces()})
     hg = makeGraph('', graph=cgraph)
     short = sorted(hg.qname(_) for _ in predicates)
 
@@ -230,13 +274,27 @@ def main():
         yield from getIsOneOfTagOf(node, g)
         yield from getIsTagOf(node, g)
 
-    def getTagChains(node, g):
+    def getTagChains(node, g, seen=tuple()):
+        # seen to prevent recursion cases where
+        # taggning can occur in either order e.g. PMID -> DOI
+        #print(tc.red(repr(OntId(node))))  # tc.red(OntId(node)) does weird stuff O_o
         parent_tag = None
         for parent_tag in chain(getIsOneOfTagOf(node, g),
                                 getIsTagOf(node, g)):
-            for pchain in getTagChains(parent_tag, g):
-                out = parent_tag, *pchain
+            if parent_tag in seen:
+                parent_tag = None
+                continue
+            ptt = next(g[parent_tag:rdf.type])
+            #if ptt in tag_types:
+            for pchain in getTagChains(parent_tag, g, seen + (node,)):
+                if ptt in tag_types:
+                    out = parent_tag, *pchain
+                else:
+                    out = pchain
                 yield out
+
+            if not ptt and not out:
+                parent_tag = None
 
         if not parent_tag:
             yield tuple()
@@ -264,7 +322,18 @@ def main():
         if not parent_action:
             yield tuple()
 
-    _endpoint_chains = {hg.qname(endpoint):[[hg.qname(endpoint)] + [hg.qname(e) for e in chain]
+    def getRestSubjects(predicate, object, g):
+        """ invert restriction """
+        rsco = cmb.Restriction(rdfs.subClassOf)
+        for rt in rsco.parse(graph=g):
+            if rt.p == predicate and rt.o == object:
+                yield from g.transitive_subjects(rdfs.subClassOf, rt.s)
+
+    annoParts = list(getRestSubjects(wf.isAttachedTo, wf.annotation, cgraph))
+    partInstances = {OntId(a):set(t if isinstance(t, BNode) else OntId(t)
+                                  for t in cgraph.transitive_subjects(rdf.type, a)) for a in annoParts}
+
+    _endpoint_chains = {OntId(endpoint):[[OntId(endpoint)] + [OntId(e) for e in chain]
                                             for chain in getActionChains(endpoint, cgraph)]
                         for endpoint in endpoints}
 
@@ -286,12 +355,11 @@ def main():
                    for terminal in terminals}
 
     def make_chains(things, getChains):
-        return {thing:[[thing] + [e for e in chain]
-                          for chain in getChains(thing, cgraph)]
-                for thing in things}
-
-    endpoint_chains = make_chains(endpoints, getActionChains)
-    terminal_chains = make_chains(terminals, getTagChains)
+        return {OntId(thing):[[OntId(thing)] + [OntId(e) for e in chain]
+                              for chain in getChains(thing, cgraph)]
+                for thing in things
+                #if not print(thing)
+        }
 
     def print_chains(thing_chains):
         print('\nstart from beginning')
@@ -302,21 +370,44 @@ def main():
 
         print('\nstart from end')
 
-        print('\n'.join(sorted(' <- '.join(hg.qname(e) for e in chain)
+        print('\n'.join(sorted(' <- '.join(e.curie for e in chain)
                                for chains in thing_chains.values()
                                for chain in chains)))
 
-    print_chains(terminal_chains)
+    def valid_tagsets(all_chains):
+        # not the most efficient way to do this ...
+        transitions = defaultdict(set)
+        for end, chains in all_chains.items():
+            for chain in chains:
+                valid = set()
+                prior_state = None
+                for element in reversed(chain):
+                    valid.add(element)
+                    state = frozenset(valid)
+                    transitions[prior_state].add(state)
+                    prior_state = state
+
+        return {s:frozenset(n) for s, n in transitions.items()}
+
+    endpoint_chains = make_chains(endpoints, getActionChains)
+    #endpoint_transitions = valid_transitions(endpoint_chains)  # not the right structure
     print_chains(endpoint_chains)
+    terminal_chains = make_chains(terminals, getTagChains)
+    print_chains(terminal_chains)
+    tag_transitions = valid_tagsets(terminal_chains)
 
     def printq(*things):
-        print(*(hg.qname(t) for t in things))
+        print(*(OntId(t).curie for t in things))
 
     from pprint import pprint
     def get_linkers(s, o, g, linkerFunc):  # FIXME not right
-        yield from g[s::o]
+        for p in g[s::o]:
+            yield p
+
         for l in linkerFunc(o, g):
+            #print(tc.blue(f'{OntId(s).curie} {l if isinstance(l, BNode) else OntId(l).curie}'))
             for p in g[s::l]:
+                #print(tc.red(f'{s} {l} {o} {p}'))
                 yield p
         return 
         linkers = set(l for l in g.transitiveClosure(linkerFunc, o))
@@ -325,34 +416,57 @@ def main():
                 yield p
 
     def edge_to_symbol(p, rev=False):
-        return '<=' if rev else '=>'  # TODO per type
+        if p == wf.initiatesAction:
+            return '<<' if rev else '>>'
+        elif p == wf.hasReplyTag:
+            return '<' if rev else '>'
+        elif p == wf.hasTagOrReplyTag:
+            return '<=' if rev else '=>'
+        elif p == wf.hasOutputTag:
+            return '-<-' if rev else '->-'
+        else:
+            return '<??' if rev else '??>'
 
     def chain_to_typed_chain(chain, g, func):
         # duh...
         #pprint(chain)
         for s, o in zip(chain, chain[1:]):
             # TODO deal with reversed case
+            s, o = s.u, o.u
             p = None
-            print(s, o)
+            #print(s, o)
             printq(s, o)
             for p in get_linkers(s, o, g, func):
-                #print(p)
+                print(tc.yellow(p))
+                #yield (s, edge_to_symbol(p), o)
                 yield from (s, edge_to_symbol(p), o)
 
             if not p:
                 for rp in get_linkers(o, s, g, func):
+                    print(tc.blue(rp))
                     yield from (s, edge_to_symbol(rp, rev=True), o)
 
     def tchains(thing_chains, func):
-        return sorted([hg.qname(e) if isinstance(e, URIRef) else e
+        return sorted([OntId(e).curie if isinstance(e, URIRef) else e
                        for e in chain_to_typed_chain(list(reversed(chain)), cgraph, func)]
                       for chains in thing_chains.values()
                       for chain in chains)
 
-    ttc = tchains(terminal_chains)
-    tec = tchains(endpoint_chains)
-    print(ttc)
-    print(tec)
+
+    def getLinkers(node, g):
+        for list_top in getLists(node, g):
+            for linker in g[:owl.oneOf:list_top]:
+                yield linker
+
+    def allSubjects(object, graph):
+        yield from (s for s, p in graph[::object])
+        yield from getLinkers(object, graph)
+
+    print()
+    ttc = tchains(terminal_chains, allSubjects)
+    tec = tchains(endpoint_chains, allSubjects)
+    pprint(ttc)
+    pprint(tec)
 
     #[print(wat) for wat in terminal_chains.values()]
     #pprint(terminal_chains)
