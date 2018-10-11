@@ -1,4 +1,19 @@
-# asdf
+from collections import defaultdict
+from pathlib import Path
+from rdflib import URIRef
+from IPython import embed
+from pyontutils.core import makeGraph, OntId, OntCuries
+import pyontutils.graphml_to_ttl as gt
+from pyontutils import combinators as cmb
+from pyontutils.utils import working_dir, TermColors as tc
+from pyontutils.graphml_to_ttl import workflow as wf, RRIDCUR
+from pyontutils.closed_namespaces import rdf, rdfs, owl
+from itertools import chain
+from rdflib import ConjunctiveGraph, BNode
+from hyputils.hypothesis import Memoizer, HypothesisHelper
+#from rdflib.extras import infixowl as io
+
+from pyontutils.graphml_to_ttl import WorkflowMapping, PaperIdMapping
 
 curator_exactrrid_unrecognized_rrid = None
 curator_exactrrid_syntax_error_rrid = None
@@ -147,14 +162,125 @@ class DashboardState:
 
 
 class AnnoAsTags:
+    tag_types = tuple()
+    anno_part_instances = tuple()  # dict
+    tag_transitions = tuple()  # dict
+    valid_tagsets = tuple()
+    terminal_tagsets = tuple()  # dict
+    annos = tuple()  # FIXME database database
+    annos_dict = tuple()  # FIXME DBDB
+    aat_dict = {}
+    # TODO factoryify
+
+    def __new__(cls, *args, **kwargs):
+        return object.__new__(cls)
+
     def __init__(self, anno):
         self.anno = anno
+        self.id = anno.id
+        self.aat_dict[self.id] = self
+        self.user = anno.user
+        self.badtags = set()
+        try:
+            self.tagset = frozenset(OntId(t) if t else t
+                                    for t in self.all_tags)
+        except KeyError as e:
+            raise ValueError(f'{list(self.all_tags)}') from e
+
+        self.invalid = False
+        if self.badtags:
+            self.invalid = True
+            
+        if self.tagset not in self.valid_tagsets:
+            self.invalid = True
+
+        self.valid = not self.invalid
+
+    def _getAATById(self, aid):
+        return self.aat_dict[aid]
+
+    @property
+    def parents(self):
+        for aid in self.anno.references:
+            try:
+                yield self._getAATById(aid)
+            except KeyError:
+                print(tc.red('WARNING:'), f'parent annotation was deleted from {self.id}')
+
+    @property
+    def all_tags(self):
+        yield from (t for a in chain(self.parents, (self,))
+                    for t in a.subbed_tags)
+
+    @property
+    def subbed_tags(self):
+        for tag in self.anno.tags:
+            yield self.tagsub(tag)
+
+    def tagsub(self, tag):
+        if tag.startswith('RRID:'):
+            if self.user == 'scibot':
+                return 'workflow:RRIDscibot'
+            else:
+                return 'workflow:RRID'
+        elif tag.startswith('DOI:'):
+            return 'workflow:DOI'
+        elif tag.startswith('PMID:'):
+            return 'workflow:PMID'
+        elif tag.startswith('RRIDCUR:'):
+            api = self.anno_part_instances
+            if self.user == 'scibot' and tag not in api[OntId('workflow:tagScibot')]:
+                self.badtags.add(tag)
+                return None  # return None to gurantee invalid tagset w/o errors
+            elif tag not in api[OntId('workflow:tagCurator')]:
+                self.badtags.add(tag)
+                return None
+            else:
+                return tag
+        else:
+            self.badtags.add(tag)
+            return None
+
+    @property
+    def next_tags(self):
+        if self.valid:
+            for next_state in self.tag_transitions[self.tagset]:
+                yield from next_state - self.tagset
+
+    @property
+    def current_state(self):
+        if self.invalid:  # modelViolated
+            return 'TEMP:needsQC'
+        else:
+            return 'TODO'
+        
+    @property
+    def initiatesAction(self):
+        # compute wheter an action needs to be taken based on the state we are in
+        # NOTE this is orthogonal to terminals and endpoints
+        # hrm ... PDA ... HRM
+        if self.tagset in self.terminal_tagsets:
+            return self.terminal_tagsets[self.tagset]
+        else:
+            # TODO ar there states that require something elseseomthin?
+            pass
 
     def exact(self):
         pass
 
+    def _rrid_tags(self):
+        return [t for t in self.all_tags if t.startswith('RRID:')]
+
     @property
     def RRID(self):
+        self.user != scibot
+
+    @property
+    def RRIDscibot(self):
+        self.anno.user == 'scibot'
+
+    @property
+    def RRIDscibotCanonical(self):
         pass
 
     def pageNote(self):
@@ -163,6 +289,9 @@ class AnnoAsTags:
     def putativeRRID(self):
         pass
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self.tagset}, {self.badtags})'
+
 
 def write(graph, path, format='nifttl'):
     with open(path, 'wb') as f:
@@ -170,22 +299,6 @@ def write(graph, path, format='nifttl'):
 
 
 def main():
-    from collections import defaultdict
-    from pathlib import Path
-    from rdflib import URIRef
-    from IPython import embed
-    from pyontutils.core import makeGraph, OntId, OntCuries
-    import pyontutils.graphml_to_ttl as gt
-    from pyontutils import combinators as cmb
-    from pyontutils.utils import working_dir, TermColors as tc
-    from pyontutils.graphml_to_ttl import workflow as wf, RRIDCUR
-    from pyontutils.closed_namespaces import rdf, rdfs, owl
-    from itertools import chain
-    from rdflib import ConjunctiveGraph, BNode
-    #from rdflib.extras import infixowl as io
-
-    from pyontutils.graphml_to_ttl import WorkflowMapping, PaperIdMapping
-
     docs = Path(__file__).parent.absolute().resolve().parent / 'docs'
     rridpath = docs / 'workflow-rrid.graphml'
     paperpath = docs / 'workflow-paper-id.graphml'
@@ -331,7 +444,9 @@ def main():
 
     annoParts = list(getRestSubjects(wf.isAttachedTo, wf.annotation, cgraph))
     partInstances = {OntId(a):set(t if isinstance(t, BNode) else OntId(t)
-                                  for t in cgraph.transitive_subjects(rdf.type, a)) for a in annoParts}
+                                  for t in cgraph.transitive_subjects(rdf.type, a)
+                                  if not isinstance(t, BNode) and t != a)
+                     for a in annoParts}
 
     _endpoint_chains = {OntId(endpoint):[[OntId(endpoint)] + [OntId(e) for e in chain]
                                             for chain in getActionChains(endpoint, cgraph)]
@@ -395,6 +510,7 @@ def main():
     terminal_chains = make_chains(terminals, getTagChains)
     print_chains(terminal_chains)
     tag_transitions = valid_tagsets(terminal_chains)
+    terminal_tags_to_endpoints =  'TODO'
 
     def printq(*things):
         print(*(OntId(t).curie for t in things))
@@ -437,7 +553,7 @@ def main():
             #print(s, o)
             printq(s, o)
             for p in get_linkers(s, o, g, func):
-                print(tc.yellow(p))
+                #print(tc.yellow(p))
                 #yield (s, edge_to_symbol(p), o)
                 yield from (s, edge_to_symbol(p), o)
 
@@ -468,17 +584,45 @@ def main():
     pprint(ttc)
     pprint(tec)
 
+    valid_tagsets = frozenset((t for s in tag_transitions.values() for t in s))
+    tts = valid_tagsets - frozenset(tag_transitions)
+    endtype = 'TODO'  # 
+    tt = {}
+    for endtype, chains  in endpoint_chains.items():
+        for *_chain, tag in chains:
+            if _chain:
+                next_thing = _chain[-1]
+            for ets in tts:
+                if tag in ets:
+                    tt[ets] = next_thing
+
+    terminal_tagsets = tt
+
     #[print(wat) for wat in terminal_chains.values()]
     #pprint(terminal_chains)
-    embed()
-    return
+
+    from scibot.config import api_token, username, group, memfile
+    get_annos = Memoizer(memfile, api_token, username, group)
+    annos, last_sync = get_annos.get_annos_from_file()  # there's our 'quick' version
+    annos_dict = {anno.id:anno for anno in annos}
+    AnnoAsTags.tag_types = tag_types
+    AnnoAsTags.anno_part_instances = partInstances
+    AnnoAsTags.tag_transitions = tag_transitions
+    AnnoAsTags.valid_tagsets = valid_tagsets
+    AnnoAsTags.terminal_tagsets = terminal_tagsets  # {tagset:endtype}
+    AnnoAsTags.annos = annos
+    AnnoAsTags.annos_dict = annos_dict
+
+
+    aat = [AnnoAsTags(a) for a in annos]
 
     # 1 reduce everything to updated user tag triples
     # for curators take only the latest reply WITH TAGS
     # sort the tags
     # check against valid end states
-    from hyputils.hypothesis import Memoizer, HypothesisHelper
-    from scibot.config import api_token, username, group, memfile
+
+    embed()
+    return
 
     class Werk(HypothesisHelper):
         _annos = {}
