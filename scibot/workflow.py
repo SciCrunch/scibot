@@ -824,6 +824,23 @@ def main():
     ok_warnings_annos = {uri:annos for uri, annos in with_warnings.items() if annos}
     whoops_warnings = {uri:annos for uri, annos in papers.items() if uri not in ok_warnings_annos}
 
+    hh = [HypothesisHelper(a, annos) for a in annos]
+    def printBadtagsHtml():
+        _ = [print(repr(tag), [HypothesisHelper.byId(a.id).htmlLink for a in annos]) for tag, annos in unique_badtags.items()]
+
+    def printBadtagsShare():
+        _ = [print(repr(tag), [HypothesisHelper.byId(a.id).shareLink for a in annos]) for tag, annos in unique_badtags.items()]
+
+    def csvBadtagsShare():
+        import csv
+        from datetime import date
+        rows = [[tag, HypothesisHelper.byId(a.id).shareLink] for tag, annos in unique_badtags.items() for a in annos]
+        TODAY = date.today().strftime('%Y-%m-%d')
+        with open(f'badtag-report-{TODAY}.csv', 'wt', newline='\n') as f:
+            writer = csv.writer(f)
+            writer.writerows(rows)
+            
+
     embed()
     return
 
