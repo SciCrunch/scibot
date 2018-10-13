@@ -11,6 +11,7 @@ from pyontutils.closed_namespaces import rdf, rdfs, owl
 from itertools import chain
 from rdflib import ConjunctiveGraph, BNode
 from hyputils.hypothesis import Memoizer, HypothesisHelper
+from scibot.anno import uri_normalization
 #from rdflib.extras import infixowl as io
 
 from pyontutils.graphml_to_ttl import WorkflowMapping, PaperIdMapping
@@ -161,6 +162,13 @@ class DashboardState:
         pass
 
 
+class Minimal:
+    def __init__(self, url, id, tags, user, document=None):
+        # document comes from the db which would already have
+        # accounted for our "more" normalized forms ...
+        pass
+
+
 class AnnoAsTags:
     robot_user = 'scibot'
     sorta_bad = frozenset(('RRIDCUR:Duplicate',))
@@ -182,6 +190,8 @@ class AnnoAsTags:
 
     def __init__(self, anno):
         self.anno = anno
+        self.uri = anno.uri
+        self.uri_normalized = uri_normalization(self.uri)
         self.id = anno.id
         self.aat_dict[self.id] = self
         self.user = anno.user
@@ -208,6 +218,10 @@ class AnnoAsTags:
     @classmethod
     def byId(cls, aid):
         return cls.aat_dict[aid]
+
+    @property
+    def raw(self):
+        return self.anno._row
 
     def special_case(self):  # FIXME wow is this bad
         # this is fantastically inefficient :/
@@ -771,6 +785,44 @@ def main():
     unique_badcurator = defaultdict(list)
     for key, value in ((frozenset(i.curator_tags), i) for i in inv):
         unique_badcurator[key].append(value)
+
+    papers = defaultdict(set)
+    for r in aat:
+        papers[r.uri_normalized].add(r)
+
+    killed = [a for a in inv if OntId('RRIDCUR:Kill') in a.tags]
+    killed_pn = [a for a in inv if OntId('RRIDCUR:KillPageNote') in a.tagset]
+
+    all_ids = {uri:frozenset(t for anno in annos for t in anno.ontid_all_tags) for uri, annos in papers.items()}
+    pmids = {uri:[t for t in tags if t.prefix == 'PMID'] for uri, tags in all_ids.items() if [t for t in tags if t.prefix == 'PMID']}
+    dois = {uri:[t for t in tags if t.prefix == 'DOI'] for uri, tags in all_ids.items() if [t for t in tags if t.prefix == 'DOI']}
+    either = {uri:[t for t in tags if t.prefix in ('DOI', 'PMID')] for uri, tags in all_ids.items() if [t for t in tags if t.prefix in ('DOI', 'PMID')]}
+    dangerzone = {uri:tags for uri, tags in either.items() if len(tags) > 2}
+    maybe_both = {uri:tags for uri, tags in either.items() if len(tags) == 2}
+    actually_both = {uri:tags for uri, tags in maybe_both.items() if 'PMID' in [t.prefix for t in tags] and 'DOI' in [t.prefix for t in tags]}
+    no_pmid = {uri:tags for uri, tags in papers.items() if uri not in pmids}
+    no_doi = {uri:tags for uri, tags in papers.items() if uri not in dois}
+    no_id = {uri:tags for uri, tags in papers.items() if uri not in either}
+    weird_paper_ids = {uri:tags for uri, tags in maybe_both.items() if uri not in actually_both}
+
+    maybe_release = {uri:annos
+                     for uri, annos in papers.items()
+                     if uri in either and uri not in dangerzone and uri not in weird_paper_ids}
+    RRIDcurator = OntId('workflow:RRID')  # because OntId is _really_ slow when used with rdflib.URIRef
+    RRIDscibot = OntId('workflow:RRIDscibot')
+    with_warnings = {uri:frozenset([a for a in annos
+                                    if a.valid and
+                                    (RRIDcurator in a.tagset or RRIDscibot in a.tagset)])
+                     for uri, annos in maybe_release.items()}
+    probably_ok_release = {uri:frozenset([a for a in annos
+                                          if a.valid and not a.warnings and
+                                          (RRIDcurator in a.tagset or RRIDscibot in a.tagset)])
+                           for uri, annos in maybe_release.items()}
+    ok_with_annos = {uri:annos for uri, annos in probably_ok_release.items() if annos}
+    whoops = {uri:annos for uri, annos in papers.items() if uri not in ok_with_annos}
+
+    ok_warnings_annos = {uri:annos for uri, annos in with_warnings.items() if annos}
+    whoops_warnings = {uri:annos for uri, annos in papers.items() if uri not in ok_warnings_annos}
 
     embed()
     return

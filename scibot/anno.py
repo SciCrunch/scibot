@@ -97,7 +97,28 @@ def uri_normalization(uri):
         else:
             normalized = no_scheme
 
+        'europepmc.org/articles/PMC5002269/table/undtbl1'
+        'www.ncbi.nlm.nih.gov/pmc/articles/PMC5075284/table/undtbl1'
+        'onlinelibrary.wiley.com/doi/10.1002/cne.23727?wol1URL=/doi/10.1002/cne.23727&regionCode=US-CA&identityKey=e2523300-b934-48c9-b08e-940de05d7335'
+        'www.jove.com/video/55441/?language=Japanese'
+        'www.mdpi.com/2073-4425/9/4/197/htm'
+        'http://www.jneurosci.org/content/37/1/47.long'
+        'www.nature.com/neuro/journal/v19/n5/full/nn.4282.html'
+        'www.nature.com/cr/journal/vaop/ncurrent/full/cr201669a.html'
+        'https://www.nature.com/articles/cr201669'
+
+        #{'www.ingentaconnect.com/content/umrsmas/bullmar/2017/00000093/00000002/art00006':
+         #[OntId('DOI:10.5343/bms.2016.1044'), OntId('DOI:info:doi/10.5343/bms.2016.1044')]}
+        'www.nature.com/articles/s41419-017-0201-6/tables/1'
+        #<meta name="prism.doi" content="doi:10.1038/s41419-017-0201-6">
+        #<meta name="dc.identifier" content="doi:10.1038/s41419-017-0201-6">
+        #<meta name="DOI" content="10.1038/s41419-017-0201-6">
+        #<meta name="citation_doi" content="10.1038/s41419-017-0201-6">  # probably wrong
+
+        # pmid extract from pmc
+        #<meta name="citation_pmid" content="28955177">
         return normalized
+
 
     except ValueError as e:  # split fail
         pdf_prefix = 'urn:x-pdf:'

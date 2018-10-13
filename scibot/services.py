@@ -19,6 +19,9 @@ def existing_tags(target_uri, h):
     tags = {}
     unresolved_exacts = {}
     for row in rows:
+        # FIXME make sure that target_uri actually matches the URI returned here!
+        # it is ok to to have multiple page notes appear as a result because we
+        # don't have access to hypothes.is's document table
         for tag in row['tags']:
             if tag.startswith('RRID:'):
                 tags[tag] = row['id']
