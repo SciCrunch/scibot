@@ -1,0 +1,18 @@
+[Unit]
+Description=scibot dashboard gunicorn daemon
+Requires=scibot-dashboard.socket
+After=network.target
+
+[Service]
+PIDFile=/run/scibot-dashboard/pid
+User={scibot-user}
+Group={scibot-user}
+RuntimeDirectory=scibot-dashboard
+WorkingDirectory=/home/{scibot-user}/run
+ExecStart=/home/{scibot-user}/.local/bin/pipenv run scibot-dashboard
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s TERM $MAINPID
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=scibot dashboard gunicorn socket
+
+[Socket]
+ListenStream=/run/scibot-dashboard/socket
+
+[Install]
+WantedBy=sockets.target

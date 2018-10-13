@@ -1,0 +1,8 @@
+[Unit]
+Description=scibot bookmarklet gunicorn socket
+
+[Socket]
+ListenStream=/run/scibot-bookmarket/socket
+
+[Install]
+WantedBy=sockets.target
