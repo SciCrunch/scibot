@@ -1,4 +1,5 @@
 import requests
+from bs4 import BeautifulSoup
 try:
     from urllib.parse import urlencode, quote
 except ImportError:

@@ -198,7 +198,8 @@ def rrid_wrapper(request, username, api_token, group, logloc, URL_LOCK):
 def main(local=False):
     from scibot.config import api_token, username, group, group2
     print(username, group, group2)  # sanity check
-    from scibot.sync import __doc__ as sync__doc__, Locker, client, syncword
+    from scibot.sync import __doc__ as sync__doc__, Locker, client
+    from scibot.config import syncword
     if syncword is None:
         raise KeyError('Please set the SCIBOT_SYNC environment variable')
 
