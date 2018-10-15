@@ -1,6 +1,7 @@
 import sys
 from os import environ
 from socket import gethostname
+from pathlib import Path
 from scibot.utils import group_to_memfile
 
 # ports
@@ -45,6 +46,11 @@ broker_backend = environ.get('CELERY_BROKER_BACKEND',
                              environ.get('BROKER_BACKEND',
                                          'rpc://'))
 accept_content = ('pickle', 'json')
+
+# logging
+source_log_location = environ.get('SOURCE_LOG_LOC',
+                                  (Path(__file__).parent.parent /
+                                   'logs').as_posix())
 
 # hypothesis
 api_token = environ.get('SCIBOT_API_TOKEN', 'TOKEN')  # Hypothesis API token

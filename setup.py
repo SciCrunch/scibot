@@ -1,9 +1,13 @@
 from setuptools import setup
 
+with open('README.md', 'rt') as f:
+    long_description = f.read()
+
 setup(name='scibot',
-      version='0.0.1',
+      version='0.0.2',
       description='curation workflow automation and coordination',
-      long_description=' ',
+      long_description=long_description,
+      long_description_content_type='text/markdown',
       url='https://github.com/SciCrunch/scibot',
       author='Tom Gillespie',
       author_email='tgbugs@gmail.com',

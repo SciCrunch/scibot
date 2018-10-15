@@ -9,20 +9,21 @@ Options:
 """
 
 import re
-from io import StringIO
-from datetime import datetime
 import csv
 import ssl
 import gzip
 import json
+from io import StringIO
 from typing import Callable, Iterable, Tuple, Any, Generator
 from pathlib import Path
+from datetime import datetime
 from curio import run
 from curio.channel import AuthenticationError
 from flask import Flask, request, abort
 from hyputils.hypothesis import HypothesisUtils
-from scibot.export import export_impl, export_json_impl
+from scibot.config import source_log_location
 from scibot.utils import makeSimpleLogger
+from scibot.export import export_impl, export_json_impl
 from IPython import embed
 
 log = makeSimpleLogger('scibot.submit')
@@ -49,8 +50,8 @@ def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
            'body':body,
            'text':text,
           }
-    fname = (Path(__file__).parent.parent / 'logs' / f'rrid-{now}.json').as_posix()
-    with open(fname, 'wt') as f:
+    fname = Path(source_log_location, f'rrid-{now}.json')
+    with open(fname.as_posix(), 'wt') as f:
         json.dump(log, f, sort_keys=True, indent=4)
 
 # types

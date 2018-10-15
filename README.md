@@ -29,6 +29,16 @@ The found RRIDs are logged to the JavaScript console
 
 The found RRIDs are logged to timestamped files, along with the text and html of the article that was scanned for RRIDs
 
+## Setup on Gentoo
+As root.
+```bash
+layman -a tgbugs-overlay
+emerge scibot
+rc-config add scibot-bookmarklet default
+vim /etc/conf.d/scibot-bookmarklet  # set username, group, api key, etc.
+/etc/init.d/scibot-bookmarklet start
+```
+
 ## Setup on ubuntu 18.04
 Set `export PATH=~/.local/bin:${PATH}` in `~/.bashrc`
 1. `sudo apt-get install build-essential python3-dev libxml2-dev libxslt1-dev`
