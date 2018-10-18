@@ -11,7 +11,7 @@ from pyontutils.closed_namespaces import rdf, rdfs, owl
 from itertools import chain
 from rdflib import ConjunctiveGraph, BNode
 from hyputils.hypothesis import Memoizer, HypothesisHelper
-from scibot.anno import uri_normalization
+from scibot.utils import uri_normalization
 #from rdflib.extras import infixowl as io
 
 from pyontutils.graphml_to_ttl import WorkflowMapping, PaperIdMapping

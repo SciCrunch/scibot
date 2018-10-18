@@ -15,8 +15,8 @@ from sqlalchemy.orm.session import sessionmaker
 from sqlalchemy.dialects.postgresql import ARRAY
 from hyputils.hypothesis import Memoizer
 from scibot import config
-from scibot.anno import quickload, quickuri, add_doc_all, validate, uri_normalization
-from scibot.utils import makeSimpleLogger
+from scibot.anno import quickload, quickuri, add_doc_all, validate
+from scibot.utils import makeSimpleLogger, uri_normalization
 from interlex.core import makeParamsValues  # FIXME probably need a common import ...
 from IPython import embed
 
