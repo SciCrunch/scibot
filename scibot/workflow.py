@@ -162,16 +162,41 @@ class DashboardState:
         pass
 
 
-class Minimal:
-    def __init__(self, url, id, tags, user, document=None):
+class AtomicAnno:
+    _cache = {}
+    def __init__(self, anno_id, tags, user, references, exact=None, document=None):  # FIXME need exact/no exact for anno vs pagenote?
         # document comes from the db which would already have
         # accounted for our "more" normalized forms ...
+        self.id = anno_id
+        self.tags = tags
+        self.user = user
+        self.all_tags = []
+        # this is super annoying because people edit things :/
+        # which means that we have to propagate on all chains
+        for reference in references:
+            if reference not in self._cache:
+                self.all_tags
+        self.state_tags = []
+
+        self._cache[id] = self
+
+
+class Document:
+    def __init__(self, normalized_uris, uris, doi, pmid):
         pass
 
 
 class AnnoAsTags:
+    """ WARNING this class is a disaster zone. """
     robot_user = 'scibot'
-    sorta_bad = frozenset(('RRIDCUR:Duplicate',))
+    tag_prefix = 'RRIDCUR'
+    info_tags = frozenset(('RRIDCUR:Duplicate', 'RRIDCUR:Misplaced'))
+    # TODO auto smart propagate? when a new correction is added?
+    cv_tags = {'RRIDCUR:NoPaperID':'RRIDCUR:NoPaperId',
+               'RRIDCUR:InsufficientMetaData':'RRIDCUR:InsufficientMetadata',
+               'RRIDCUR:MetadataMistmatch':'RRIDCUR:MetadataMismatch',  # FIXME SPELLING
+               'RRIDCUR:noPMID':'RRIDCUR:NoPMID',
+    }
     # RRIDCUR:Duplicate is an information -> curator only tag and can't be trusted
     tag_types = tuple()
     anno_part_instances = tuple()  # dict
@@ -183,9 +208,23 @@ class AnnoAsTags:
     warnings = frozenset()  # shared empty
     aat_dict = {}
     _tag_cache = {}
+    _setup_done = False
     # TODO factoryify
 
     def __new__(cls, *args, **kwargs):
+        if not cls._setup_done:
+            cls.infotags = frozenset((OntId(t) for t in cls.info_tags))  # just to make it even more confusing
+            cls.cvtags = {OntId(cvt):OntId(t) for cvt, t in cls.cv_tags.items()}  # just to make it even more confusing
+            for tag in set(t for s in chain(cls.terminal_tagsets, (cls.infotags,)) for t in s):
+                if tag.prefix == cls.tag_prefix:
+                    @property
+                    def getter(self, t=tag):
+                        return t in set(self.tagset) or t in set(self.badset)
+
+                    setattr(cls, tag.suffix, getter)
+
+            cls._setup_done = True
+
         return object.__new__(cls)
 
     def __init__(self, anno):
@@ -195,6 +234,21 @@ class AnnoAsTags:
         self.id = anno.id
         self.aat_dict[self.id] = self
         self.user = anno.user
+        self.orphaned = False  # will be set when looking for parents FIXME orphaned is transitive
+
+        exacts = []  # because some implementations allow more than one
+        for target in self.raw['target']:
+            if 'selector' in target:
+                for selector in target['selector']:
+                    if 'exact' in selector:
+                        exacts.append(selector['exact'])
+
+        self.isReply = bool(anno.references)
+        self.isPageNote = not bool(exacts)
+        self.isAnnotation = not self.isReply and not self.isPageNote
+
+        self.exacts = exacts
+
         try:
             self.tagset = frozenset(self.all_tags)
             # FIXME squashes multiple RRIDs
@@ -209,11 +263,17 @@ class AnnoAsTags:
 
         self.DOIs = set(t for t in self.ontid_all_tags if t and t.prefix == 'DOI')
         self.PMIDs = set(t for t in self.ontid_all_tags if t and t.prefix == 'PMID')
+        self.RRIDscibot = set(t for t in self.scibot_root_tags if t and t.prefix == 'RRID')
+        self.RRIDscibotCanonical = set(t for t in self.scibot_reply_tags if t and t.prefix == 'RRID')
         self.RRIDcurator = set(t for t in self.curator_tags if t and t.prefix == 'RRID')
 
-        self.validate()
-        self.invalid = bool(self.reason_invalid)
-        self.valid = not self.invalid
+    @property
+    def putativeRRID(self):
+        if self.user == self.robot_user and self.isAnnotation:
+            return self.exacts[0]  # putatives could break OntId, so keep as string
+        elif self.user != self.robot_user and (not self.RRIDscibot or self.Unresolved):
+            for parent in self.parents:
+                return parent.putativeRRID
 
     @classmethod
     def byId(cls, aid):
@@ -223,92 +283,18 @@ class AnnoAsTags:
     def raw(self):
         return self.anno._row
 
-    def special_case(self):  # FIXME wow is this bad
-        # this is fantastically inefficient :/
-        badset = set(OntId(t) if t.startswith('RRIDCUR:')
-                     and ' ' not in t  # *shakes fist angrily*
-                     else t
-                     for t in self.badset)
-        tagset = frozenset(badset | self.tagset - {None})
-        dupe = OntId('RRIDCUR:Duplicate')
-        if dupe in tagset:
-            tagset = frozenset((t for t in tagset if t != dupe))
-            self.warnings |= frozenset({dupe})
-
-        def rrid_safe_suffix(_):
-            hah = next(iter(self.RRIDcurator))  # FIXME multicase ...
-            return not hah.suffix in set(t.suffix
-                                         for t in self.anno_part_instances[OntId('workflow:tagCurator')])
-
-        scs = {
-            # TODO make sure that ONLY the workflow tags are used to retrieve values
-            # so that annotations with an RRID: tag that are/were unresolved have to
-            # to into a special handline pipeline FIXME this implementation is NOT sufficient
-            ('workflow:RRID',):
-            (rrid_safe_suffix, ('workflow:RRID', 'RRIDCUR:Missing')),
-            ('workflow:RRID', 'RRIDCUR:Validated'):
-            (lambda x:True, ('RRIDCUR:Validated',)),  # rrid deal with elsewhere
-            ('workflow:RRID', 'RRIDCUR:Unresolved'):  # super confusing ...
-            (lambda x:True, ('RRIDCUR:GiveMeAReason',)),
-            ('workflow:RRIDscibot', 'RRIDCUR:Unresolved'):
-            (lambda x:True, ('RRIDCUR:Unresolved',)),
-            #('workflow:RRID',): ('workflow:RRID', 'RRIDCUR:Missing'),
-            # can't use this yet due to the bad RRID:Missing and friends issues
-            #('',): ('',),
-        }
-        special_cases = {}
-        for special, (test, case) in scs.items():
-            special_cases[
-                frozenset((OntId(s) for s in special))
-            ] = test, frozenset((OntId(c) for c in case))
-
-        if tagset in special_cases:
-            test, new_tagset = special_cases[tagset]
-            if test(tagset):
-                self.warnings |= tagset
-                return new_tagset
-            else:
-                return None
-        elif self.warnings:  # dupe
-            return tagset
-
-    def validate(self):
-        """ validate a single reply chain """
-        self.reason_invalid = tuple()
-        if self.badset:
-            badset = self.badset - self.sorta_bad  # FIXME make this accessible
-            if badset:
-                self.reason_invalid += ('There are bad tags.',)
-
-        if self.tagset not in self.valid_tagsets:
-            special_case = self.special_case()  # TODO do something with special case?
-            if not special_case:
-                self.reason_invalid += ('Invalid tagset',)  # TODO post possible fixes
-
-        # the tests below usually will not trigger at this stage
-        # because the issue usually arrises only when looking across multiple
-        # reply threads, thus what we need to do is flag any reply chains that
-        # have been superseeded
-
-        if len(self.DOIs) > 1:
-            self.reason_invalid += ('Too many DOIs',)
-
-        if len(self.PMIDs) > 1:
-            self.reason_invalid += ('Too many PMIDs',)
-            
-        if len(self.RRIDcurator) > 1:
-            self.reason_invalid += ('Too many curator RRIDs',)
-
     def _getAATById(self, aid):
         return self.aat_dict[aid]
 
     @property
     def parents(self):
-        for aid in self.anno.references:
-            try:
-                yield self._getAATById(aid)
-            except KeyError:
-                print(tc.red('WARNING:'), f'parent annotation was deleted from {self.id}')
+        if not self.orphaned:
+            for aid in self.anno.references:
+                try:
+                    yield self._getAATById(aid)
+                except KeyError:
+                    self.orphaned = True
+                    print(tc.red('WARNING:'), f'parent annotation was deleted from {self.id}')
 
     @property
     def tags(self):
@@ -334,9 +320,40 @@ class AnnoAsTags:
                     for t in a.tags)
 
     @property
+    def scibot_root_tags(self):
+        """ annotation or page note """
+        yield from (self._tag_cache[t]  # this should always succeed ...
+                    for a in chain(self.parents, (self,))
+                    if a.user == self.robot_user and not self.isReply
+                    for t in a.tags)
+
+    @property
+    def scibot_reply_tags(self):
+        yield from (self._tag_cache[t]  # this should always succeed ...
+                    for a in chain(self.parents, (self,))
+                    if a.user == self.robot_user and self.isReply
+                    for t in a.tags)
+
+    @property
+    def scibot_tags(self):
+        yield from self.scibot_root_tags
+        yield from self.scibot_reply_tags
+
+    @property
     def all_bads(self):
-        yield from (t for a in chain(self.parents, (self,))
-                    for t in a.badtags)
+        # FIXME this chain propagates behind fixes >_<
+        # FIXME this is extremely dangerous code duplication
+        # that will break logic because it allows propagation
+        # of an 'unfixed' view of the parent tags
+        # the correct solution is static binning of all tags
+        # during init and decoupling the state detection from
+        # the actual tags >_<
+        for anno in self.parents:
+            for t in anno.badtags:
+                if t not in self.info_tags:
+                    yield t
+
+        yield from self.badtags
 
     @property
     def subbed_tags(self):
@@ -393,6 +410,127 @@ class AnnoAsTags:
         else:
             return None
 
+    def exact(self):
+        pass
+
+    def pageNote(self):
+        pass
+
+    def __repr__(self):
+        _tagset = ' '.join(sorted(t.curie if t is not None else 'None' for t in self.tagset))
+        tagset = '(' + _tagset + ')' if _tagset else '()'
+        _badset = ' '.join(sorted(t for t in self.badset))
+        badset = ' (' + _badset + ')' if _badset else ' ()'
+        _ontid_all_tags = ' '.join(sorted(t for t in self.ontid_all_tags))
+        ontid_all_tags = ' (' + _ontid_all_tags + ')' if _ontid_all_tags else ' ()'
+
+        return f'{self.__class__.__name__}.byId({self.id!r})  # {tagset}{badset}{ontid_all_tags}'
+
+
+class TagLogic(AnnoAsTags):
+    aat_dict = {}
+    def __init__(self, anno):
+        super().__init__(anno)
+        self.validate()
+        self.invalid = bool(self.reason_invalid)
+        self.valid = not self.invalid
+
+    def special_case(self):  # FIXME wow is this bad
+        # handle info_tags
+        badset = set(OntId(t) if t.startswith('RRIDCUR:')
+                     and ' ' not in t  # *shakes fist angrily*
+                     else t
+                     for t in self.badset)
+
+
+        tagset = frozenset(badset | self.tagset - {None})
+        for itag in self.infotags:
+            if itag in tagset:
+                tagset = frozenset((t for t in tagset if t != itag))
+                self.warnings |= frozenset({itag})
+
+        for cv_tag, tag in self.cvtags.items():
+            if cv_tag in tagset:
+                tagset = tagset - frozenset((cv_tag))
+                tagset |= frozenset((tag))
+                self.warnings |= frozenset({cv_tag})
+
+
+        def rrid_safe_suffix(_):
+            hah = next(iter(self.RRIDcurator))  # FIXME multicase ...
+            return not hah.suffix in set(t.suffix
+                                         for t in self.anno_part_instances[OntId('workflow:tagCurator')])
+
+        scs = {
+            # TODO make sure that ONLY the workflow tags are used to retrieve values
+            # so that annotations with an RRID: tag that are/were unresolved have to
+            # to into a special handline pipeline FIXME this implementation is NOT sufficient
+            ('workflow:RRID',):
+            (rrid_safe_suffix, ('workflow:RRID', 'RRIDCUR:Missing')),
+            ('workflow:RRID', 'RRIDCUR:Validated'):
+            (lambda x:True, ('RRIDCUR:Validated',)),  # rrid deal with elsewhere
+            ('workflow:RRID', 'RRIDCUR:Unresolved'):  # super confusing ...
+            (lambda x:True, ('RRIDCUR:GiveMeAReason',)),
+            ('workflow:RRIDscibot', 'RRIDCUR:Unresolved'):
+            (lambda x:True, ('RRIDCUR:Unresolved',)),
+            #('workflow:RRID',): ('workflow:RRID', 'RRIDCUR:Missing'),
+            # can't use this yet due to the bad RRID:Missing and friends issues
+            #('',): ('',),
+        }
+        special_cases = {}
+        for special, (test, case) in scs.items():
+            special_cases[
+                frozenset((OntId(s) for s in special))
+            ] = test, frozenset((OntId(c) for c in case))
+
+        if tagset in special_cases:
+            test, new_tagset = special_cases[tagset]
+            if test(tagset):
+                self.warnings |= tagset
+                return new_tagset
+            else:
+                return None
+        elif self.warnings:  # itags
+            return tagset
+
+    def validate(self):
+        """ validate a single reply chain """
+        self.reason_invalid = tuple()
+        if self.badset:
+            badset = self.badset - self.info_tags - frozenset(self.cv_tags)  # FIXME make this accessible
+            if badset:
+                self.reason_invalid += ('There are bad tags.',)
+
+        if self.tagset not in self.valid_tagsets:
+            special_case = self.special_case()  # TODO do something with special case?
+            if not special_case:
+                self.reason_invalid += ('Invalid tagset',)  # TODO post possible fixes
+
+        if self.orphaned:
+            self.reason_invalid += ('Orphaned',)
+
+        # the tests below usually will not trigger at this stage
+        # because the issue usually arrises only when looking across multiple
+        # reply threads, thus what we need to do is flag any reply chains that
+        # have been superseeded
+
+        if len(self.DOIs) > 1:
+            self.reason_invalid += ('Too many DOIs',)
+
+        if len(self.PMIDs) > 1:
+            self.reason_invalid += ('Too many PMIDs',)
+
+        if len(self.RRIDcurator) > 1:
+            self.reason_invalid += ('Too many curator RRIDs',)
+
+        if len(self.RRIDscibot) > 1:  # only the paranoid survive
+            self.reason_invalid += ('Too many scibot RRIDs',)
+
+        if self.Unresolved and len(self.RRIDcurator) == 1:
+            curatorRRID = next(iter(self.RRIDcurator))
+            if curatorRRID.curie == self.putativeRRID:  # putatives could break OntId, so keep as string
+                self.reason_invalid += ('Unresolved scibot RRID matches curator RRID',)
+
     @property
     def next_tags(self):
         if self.valid:
@@ -417,40 +555,14 @@ class AnnoAsTags:
             # TODO ar there states that require something elseseomthin?
             pass
 
-    def exact(self):
-        pass
-
-    def _rrid_tags(self):
-        return [t for t in self.all_tags if t.startswith('RRID:')]
-
-    @property
-    def RRID(self):
-        self.user != scibot
-
-    @property
-    def RRIDscibot(self):
-        self.anno.user == self.robot_user
-
-    @property
-    def RRIDscibotCanonical(self):
-        pass
-
-    def pageNote(self):
-        pass
-
-    def putativeRRID(self):
-        pass
-
-    def __repr__(self):
-        return f'{self.__class__.__name__}.byId({self.id!r})  # ({self.tagset}, {self.badset}, {sorted(self.ontid_all_tags)})'
-
 
 def write(graph, path, format='nifttl'):
     with open(path, 'wb') as f:
         f.write(graph.serialize(format=format))
 
 
-def main():
+def parse_workflow():
+    # FIXME TODO these states should probably be compiled down to numbers???
     docs = Path(__file__).parent.absolute().resolve().parent / 'docs'
     rridpath = docs / 'workflow-rrid.graphml'
     paperpath = docs / 'workflow-paper-id.graphml'
@@ -754,10 +866,16 @@ def main():
 
     #[print(wat) for wat in terminal_chains.values()]
     #pprint(terminal_chains)
+    return tag_types, partInstances, valid_tagsets, terminal_tagsets, tag_transitions
+
+
+def main():
+    tag_types, partInstances, valid_tagsets, terminal_tagsets, tag_transitions = parse_workflow()
 
     from scibot.config import api_token, username, group, memfile
     get_annos = Memoizer('/tmp/test-stuff.pickle', api_token, username, group)
     annos, last_sync = get_annos.get_annos_from_file()  # there's our 'quick' version
+    print('>>>>>>>>>>>>>>>>>>>>>> Done with initial load.')  # pickle is ... not efficient
     annos_dict = {anno.id:anno for anno in annos}
     AnnoAsTags.tag_types = tag_types
     AnnoAsTags.anno_part_instances = partInstances
@@ -767,8 +885,16 @@ def main():
     AnnoAsTags.annos = annos
     AnnoAsTags.annos_dict = annos_dict
 
+    #aat = [TagLogic(a) for a in annos]
+    def toprofile():
+        out = []
+        for a in annos:
+             tl = TagLogic(a)
+             out.append(tl)
+        return out
 
-    aat = [AnnoAsTags(a) for a in annos]
+    aat = toprofile()
+    print('>>>>>>>>>>>>>>>>>>>>>> Done with initial processing.')
     warn = [a for a in aat if a.warnings]
     inv = [a for a in aat if a.invalid]
 
@@ -780,8 +906,9 @@ def main():
     unique_badtags = defaultdict(list)
     for i in inv:
         for b in i.badset:
-            unique_badtags[b].append(i)
-            
+            if i.invalid:
+                unique_badtags[b].append(i)
+
     unique_badcurator = defaultdict(list)
     for key, value in ((frozenset(i.curator_tags), i) for i in inv):
         unique_badcurator[key].append(value)
@@ -790,8 +917,10 @@ def main():
     for r in aat:
         papers[r.uri_normalized].add(r)
 
-    killed = [a for a in inv if OntId('RRIDCUR:Kill') in a.tags]
-    killed_pn = [a for a in inv if OntId('RRIDCUR:KillPageNote') in a.tagset]
+    RRIDCURKill = OntId('RRIDCUR:Kill')
+    RRIDCURKillPageNote = OntId('RRIDCUR:KillPageNote')
+    killed = [a for a in inv if RRIDCURKill in a.tags]
+    killed_pn = [a for a in inv if RRIDCURKillPageNote in a.tagset]
 
     all_ids = {uri:frozenset(t for anno in annos for t in anno.ontid_all_tags) for uri, annos in papers.items()}
     pmids = {uri:[t for t in tags if t.prefix == 'PMID'] for uri, tags in all_ids.items() if [t for t in tags if t.prefix == 'PMID']}
@@ -810,19 +939,23 @@ def main():
                      if uri in either and uri not in dangerzone and uri not in weird_paper_ids}
     RRIDcurator = OntId('workflow:RRID')  # because OntId is _really_ slow when used with rdflib.URIRef
     RRIDscibot = OntId('workflow:RRIDscibot')
+
+    # with warnings
     with_warnings = {uri:frozenset([a for a in annos
                                     if a.valid and
                                     (RRIDcurator in a.tagset or RRIDscibot in a.tagset)])
                      for uri, annos in maybe_release.items()}
-    probably_ok_release = {uri:frozenset([a for a in annos
+    ok_warnings_annos = {uri:annos for uri, annos in with_warnings.items() if annos}
+    papers_not_ok_warnings = {uri:annos for uri, annos in papers.items() if uri not in ok_warnings_annos}
+
+    # without warnings
+    probably_ok_release = {uri:frozenset([a for a in annos  # aka no warnings
                                           if a.valid and not a.warnings and
                                           (RRIDcurator in a.tagset or RRIDscibot in a.tagset)])
                            for uri, annos in maybe_release.items()}
     ok_with_annos = {uri:annos for uri, annos in probably_ok_release.items() if annos}
-    whoops = {uri:annos for uri, annos in papers.items() if uri not in ok_with_annos}
+    papers_not_ok = {uri:annos for uri, annos in papers.items() if uri not in ok_with_annos}
 
-    ok_warnings_annos = {uri:annos for uri, annos in with_warnings.items() if annos}
-    whoops_warnings = {uri:annos for uri, annos in papers.items() if uri not in ok_warnings_annos}
 
     hh = [HypothesisHelper(a, annos) for a in annos]
     def printBadtagsHtml():
@@ -834,16 +967,32 @@ def main():
     def csvBadtagsShare():
         import csv
         from datetime import date
-        rows = [[tag, HypothesisHelper.byId(a.id).shareLink] for tag, annos in unique_badtags.items() for a in annos]
+        #rows = sorted(set((tag, HypothesisHelper.byId(a.id).shareLink) for tag, annos in unique_badtags.items() for a in annos))
+        rows = sorted(set((tag, HypothesisHelper.byId(a.id).shareLink) for tag, annos in unique_badtags.items() for a in annos))
         TODAY = date.today().strftime('%Y-%m-%d')
         with open(f'badtag-report-{TODAY}.csv', 'wt', newline='\n') as f:
             writer = csv.writer(f)
             writer.writerows(rows)
-            
+
+    rows = sorted(set((tag, HypothesisHelper.byId(a.id).htmlLink, a.reason_invalid)
+                      for tag, annos in unique_badtags.items() for a in annos))
+    wat = sorted(set((tag, HypothesisHelper.byId(a.id)) for tag, annos in unique_badtags.items() for a in annos))
+    def maxp(r):
+        return maxp(r.parent) if r.parent else r
+
+    hrm = [maxp(w) for _, w in wat if TagLogic.byId(w.id).Duplicate]
+    misp_but_not_why = [[t, maxp(w), TagLogic.byId(w.id).reason_invalid]
+                        for t, w in wat
+                        if t == 'RRIDCUR:Misplaced']
+    dupe_but_not_why = [[t, maxp(w), TagLogic.byId(w.id).reason_invalid]
+                        for t, w in wat
+                        if t == 'RRIDCUR:Duplicate']
+
 
     embed()
     return
 
+def old_main():
     class Werk(HypothesisHelper):
         _annos = {}
         _replies = {}
