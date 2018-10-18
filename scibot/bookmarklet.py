@@ -24,6 +24,7 @@ from hyputils.hypothesis import HypothesisUtils
 from scibot.config import source_log_location
 from scibot.utils import makeSimpleLogger
 from scibot.export import export_impl, export_json_impl
+from scibot.workflow import curatorTags
 from IPython import embed
 
 log = makeSimpleLogger('scibot.submit')
@@ -238,6 +239,11 @@ def main(local=False):
         return 'test-passed?'
 
     synctest()
+
+    @app.route('/controlled-tags', methods=['GET'])
+    def route_controlled_tags():
+        curator_tags = curatorTags()  # TODO need client support for workflow:RRID -> * here
+        return '\n'.join(curator_tags), 200, {'Content-Type':'text/plain; charset=utf-8'}
 
     @app.route('/rrid', methods=['POST', 'OPTIONS'])
     def rrid():

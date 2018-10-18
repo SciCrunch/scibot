@@ -587,6 +587,9 @@ def parse_workflow():
     #if type isa wf.tag
 
     tag_types = set(cgraph.transitive_subjects(rdfs.subClassOf, wf.tag))
+    tag_tokens = {tagType:sorted(set(t for t in cgraph.transitive_subjects(rdf.type, tagType)
+                                     if t != tagType))
+                  for tagType in tag_types}
     has_tag_types = set(cgraph.transitive_subjects(rdfs.subPropertyOf, wf.hasTagOrReplyTag))
     has_tag_types.add(wf.hasOutputTag)
     has_next_action_types = set(cgraph.transitive_subjects(rdfs.subPropertyOf, wf.hasOutput))
@@ -866,11 +869,16 @@ def parse_workflow():
 
     #[print(wat) for wat in terminal_chains.values()]
     #pprint(terminal_chains)
-    return tag_types, partInstances, valid_tagsets, terminal_tagsets, tag_transitions
+    return tag_types, tag_tokens, partInstances, valid_tagsets, terminal_tagsets, tag_transitions
 
 
-def main():
-    tag_types, partInstances, valid_tagsets, terminal_tagsets, tag_transitions = parse_workflow()
+def curatorTags():
+    tag_types, tag_tokens, *rest = parse_workflow()
+    return sorted(OntId(t).curie for t in tag_tokens[wf.tagCurator])
+
+
+def _main():
+    tag_types, tag_tokens, partInstances, valid_tagsets, terminal_tagsets, tag_transitions = parse_workflow()
 
     from scibot.config import api_token, username, group, memfile
     get_annos = Memoizer('/tmp/test-stuff.pickle', api_token, username, group)
