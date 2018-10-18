@@ -3,7 +3,7 @@ from h import models
 from h.util.uri import normalize as uri_normalize
 from h.models.document import update_document_metadata
 from h.schemas.annotation import CreateAnnotationSchema
-from pyontutils.utils import anyMembers
+from pyontutils.utils import anyMembers, noneMembers
 from IPython import embed
 
 bad_uris = ('/articles/6-124/v2',  # FIXME don't hardcode this >_<
@@ -13,6 +13,10 @@ bad_uris = ('/articles/6-124/v2',  # FIXME don't hardcode this >_<
 def uri_normalization(uri):
     """ NOTE: this does NOT produce uris """
     try:
+        # strip hypothesis extension prefix
+        if uri.startswith('chrome-extension://bjfhmglciegochdpefhhlphglcehbmek/content/web/viewer.html?file='):
+            junk, uri = uri.split('=', 1)
+
         # universal fixes
         no_fragment, *_frag = uri.rsplit('#', 1)
         no_trailing_slash = no_fragment.rstrip('/')  # annoying
@@ -28,6 +32,10 @@ def uri_normalization(uri):
                          .replace('.full', '')
                          .replace('.pdf', '')
             )
+        elif no_scheme.endswith('?needAccess=true'):
+            no_scheme = no_scheme[:-len('?needAccess=true')]
+        elif '?systemMessage' in no_scheme:
+            no_scheme, junk = no_scheme.rsplit('?systemMessage', 1)
 
         # specific fixes
         if anyMembers(no_scheme,
@@ -58,6 +66,7 @@ def uri_normalization(uri):
             normalized = (no_scheme
                           .replace('/abstract', '')
                           .replace('/abs', '')
+                          .replace('/fulltext', '')
                           .replace('/full', '')
                           .replace('/pdf', ''))
         #elif ('sciencedirect.com' in no_scheme):
@@ -71,15 +80,39 @@ def uri_normalization(uri):
             # TODO content/early -> resolution_chain(doi)
             normalized = (no_scheme
                           .replace('.short', '')
+                          .replace('.long', '')
                           .replace('.full', '')
                           .replace('.pdf', '')
                           # note .full.pdf is a thing
                           )
+        elif 'pnas.org' in no_scheme:
+            normalized = (no_scheme
+                          .replace('.short', '')
+                          .replace('.long', '')
+                          .replace('.full', ''))
+        elif 'mdpi.com' in no_scheme:
+            normalized = (no_scheme
+                          .replace('/htm', ''))
+        elif 'f1000research.com' in no_scheme:
+            # you should be ashamed of yourselves for being in here for this reason
+            normalized, *maybe_version = no_scheme.rsplit('/v', 1)
+        elif 'academic.oup.com' in no_scheme:
+            normalized, *maybesr = no_scheme.rsplit('?searchresult=', 1)
+            _normalized, maybe_junk = normalized.rsplit('/', 1)
+            numbers = '0123456789'
+            if (maybe_junk[0] not in numbers or  # various ways to detect the human readable junk after the id
+                maybe_junk[-1] not in numbers or
+                '-' in maybe_junk or
+                len(maybe_junk) > 20):
+                normalized = _normalized
         elif anyMembers(no_scheme,
                         'jci.org',
                         'nature.com'):
             # cases where safe to remove query fragment
             normalized, *_query = no_scheme.rsplit('?', 1)
+            normalized, *table_number = normalized.rsplit('/tables/', 1)
+        elif 'pubmed/?term=' in no_scheme and noneMembers(no_scheme, ' ', '+'):
+            normalized = no_scheme.replace('?term=', '')
         elif 'nih.gov/pubmed/?' in no_scheme:
             # FIXME scibot vs client norm?
             normalized = no_scheme.replace(' ', '+')
@@ -89,6 +122,8 @@ def uri_normalization(uri):
             ded, wat = oops.split('//', 1)
             blargh, suffix = wat.split('/', 1)
             normalized = hrm + 'gov/pmc/' + suffix
+        elif 'table/undtbl' in no_scheme:
+            normalized, table_number = no_scheme.rsplit('table/undtbl')
         elif anyMembers(no_scheme,
                         'index.php?',
                        ):
@@ -97,23 +132,14 @@ def uri_normalization(uri):
         else:
             normalized = no_scheme
 
-        'europepmc.org/articles/PMC5002269/table/undtbl1'
-        'www.ncbi.nlm.nih.gov/pmc/articles/PMC5075284/table/undtbl1'
         'onlinelibrary.wiley.com/doi/10.1002/cne.23727?wol1URL=/doi/10.1002/cne.23727&regionCode=US-CA&identityKey=e2523300-b934-48c9-b08e-940de05d7335'
         'www.jove.com/video/55441/?language=Japanese'
-        'www.mdpi.com/2073-4425/9/4/197/htm'
-        'http://www.jneurosci.org/content/37/1/47.long'
         'www.nature.com/neuro/journal/v19/n5/full/nn.4282.html'
         'www.nature.com/cr/journal/vaop/ncurrent/full/cr201669a.html'
         'https://www.nature.com/articles/cr201669'
 
         #{'www.ingentaconnect.com/content/umrsmas/bullmar/2017/00000093/00000002/art00006':
          #[OntId('DOI:10.5343/bms.2016.1044'), OntId('DOI:info:doi/10.5343/bms.2016.1044')]}
-        'www.nature.com/articles/s41419-017-0201-6/tables/1'
-        #<meta name="prism.doi" content="doi:10.1038/s41419-017-0201-6">
-        #<meta name="dc.identifier" content="doi:10.1038/s41419-017-0201-6">
-        #<meta name="DOI" content="10.1038/s41419-017-0201-6">
-        #<meta name="citation_doi" content="10.1038/s41419-017-0201-6">  # probably wrong
 
         # pmid extract from pmc
         #<meta name="citation_pmid" content="28955177">

@@ -128,7 +128,7 @@ def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker,
 
 
 def rrid_POST(request, h, logloc, URL_LOCK):
-    target_uri, doi, head, body, text, cleaned_text = process_POST_request(request)
+    target_uri, doi, pmid_from_source, head, body, text, cleaned_text = process_POST_request(request)
     running = URL_LOCK.start_uri(target_uri)
     print(target_uri)
     if running:
@@ -138,10 +138,27 @@ def rrid_POST(request, h, logloc, URL_LOCK):
     tags, unresolved_exacts = existing_tags(target_uri, h)
 
     if doi:
-        pmid = get_pmid(doi)
-        annotate_doi_pmid(target_uri, doi, pmid, h, tags)
+        pmid_from_doi = get_pmid(doi)
+    else:
+        pmid_from_doi = None
+
+    if pmid_from_source and pmid_from_doi:
+        if pmid_from_source == pmid_from_doi:
+            pmid = pmid_from_source
+        else:
+            # TODO responses -> db
+            # TODO tag for marking errors explicitly without the dashboard?
+            r1 = annotate_doi_pmid(target_uri, None, pmid_from_doi, h, tags, 'ERROR\nPMID from DOI')
+            r2 = annotate_doi_pmid(target_uri, None, pmid_from_source, h, tags, 'ERROR\nPMID from source')
+            pmid = None
+    elif pmid_from_source:
+        pmid = pmid_from_source
+    elif pmid_from_doi:
+        pmid = pmid_from_doi
     else:
         pmid = None
+
+    r = annotate_doi_pmid(target_uri, doi, pmid, h, tags)  # todo r -> db with responses
 
     found_rrids = {}
     existing = []

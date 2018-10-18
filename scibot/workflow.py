@@ -421,7 +421,7 @@ class AnnoAsTags:
         tagset = '(' + _tagset + ')' if _tagset else '()'
         _badset = ' '.join(sorted(t for t in self.badset))
         badset = ' (' + _badset + ')' if _badset else ' ()'
-        _ontid_all_tags = ' '.join(sorted(t for t in self.ontid_all_tags))
+        _ontid_all_tags = ' '.join(sorted(t.curie for t in self.ontid_all_tags))
         ontid_all_tags = ' (' + _ontid_all_tags + ')' if _ontid_all_tags else ' ()'
 
         return f'{self.__class__.__name__}.byId({self.id!r})  # {tagset}{badset}{ontid_all_tags}'
@@ -877,7 +877,7 @@ def curatorTags():
     return sorted(OntId(t).curie for t in tag_tokens[wf.tagCurator])
 
 
-def _main():
+def main():
     tag_types, tag_tokens, partInstances, valid_tagsets, terminal_tagsets, tag_transitions = parse_workflow()
 
     from scibot.config import api_token, username, group, memfile
@@ -933,10 +933,13 @@ def _main():
     all_ids = {uri:frozenset(t for anno in annos for t in anno.ontid_all_tags) for uri, annos in papers.items()}
     pmids = {uri:[t for t in tags if t.prefix == 'PMID'] for uri, tags in all_ids.items() if [t for t in tags if t.prefix == 'PMID']}
     dois = {uri:[t for t in tags if t.prefix == 'DOI'] for uri, tags in all_ids.items() if [t for t in tags if t.prefix == 'DOI']}
-    either = {uri:[t for t in tags if t.prefix in ('DOI', 'PMID')] for uri, tags in all_ids.items() if [t for t in tags if t.prefix in ('DOI', 'PMID')]}
+    either = {uri:[t for t in tags if t.prefix in ('DOI', 'PMID')]
+              for uri, tags in all_ids.items()
+              if [t for t in tags if t.prefix in ('DOI', 'PMID')]}
     dangerzone = {uri:tags for uri, tags in either.items() if len(tags) > 2}
     maybe_both = {uri:tags for uri, tags in either.items() if len(tags) == 2}
-    actually_both = {uri:tags for uri, tags in maybe_both.items() if 'PMID' in [t.prefix for t in tags] and 'DOI' in [t.prefix for t in tags]}
+    actually_both = {uri:tags for uri, tags in maybe_both.items()
+                     if 'PMID' in [t.prefix for t in tags] and 'DOI' in [t.prefix for t in tags]}
     no_pmid = {uri:tags for uri, tags in papers.items() if uri not in pmids}
     no_doi = {uri:tags for uri, tags in papers.items() if uri not in dois}
     no_id = {uri:tags for uri, tags in papers.items() if uri not in either}
@@ -996,6 +999,9 @@ def _main():
                         for t, w in wat
                         if t == 'RRIDCUR:Duplicate']
 
+
+    def check_uri_norm(substring, viewkey=True):
+        return sorted(k if viewkey else tuple(sorted(set(_.uri for _ in v))) for k, v in papers.items() if substring in k)
 
     embed()
     return

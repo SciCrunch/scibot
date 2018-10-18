@@ -2,14 +2,17 @@ from lxml import etree
 from scibot.utils import DOI, PMID
 
 
-def annotate_doi_pmid(target_uri, doi, pmid, h, tags):  # TODO
+def annotate_doi_pmid(target_uri, doi, pmid, h, tags, extra_text=None):  # TODO
     # need to check for existing ...
-    doi_ = 'DOI:' + doi
     text_list = []
     tags_to_add = []
-    if doi_ not in tags:
-        text_list.append(DOI(doi))
-        tags_to_add.append(doi_)
+    if extra_text is not None:
+        text_list.append(extra_text)
+    if doi is not None:
+        doi_ = 'DOI:' + doi
+        if doi_ not in tags:
+            text_list.append(DOI(doi))
+            tags_to_add.append(doi_)
     if pmid and pmid not in tags:
         text_list.append(PMID(pmid))
         tags_to_add.append(pmid)

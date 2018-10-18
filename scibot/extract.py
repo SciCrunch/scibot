@@ -71,6 +71,8 @@ def getDoi(*soups):
         ('meta', 'name', 'DC.identifier', 'content'),  # f1000 worst
         ('meta', 'name', 'dc.Identifier', 'content', {'scheme':'doi'}),  # tandf
         ('meta', 'name', 'dc.Source', 'content'),  # mit press jounals wat
+        ('meta', 'name', 'dc.identifier', 'content'),
+        ('meta', 'name', 'prism.doi', 'content'),
     )
     for soup in soups:
         for args in argslist:
@@ -98,6 +100,17 @@ def getUri(uri, *soups):
                     print('canonical and uri do not match, preferring canonical', cu, uri)
                 return cu
     return uri
+
+
+def getPmid(*soups):
+    argslist = (
+        ('meta', 'property', 'citation_pmid', 'content'),
+    )
+    for soup in soups:
+        for args in argslist:
+            cu = searchSoup(soup)(*args)
+            if cu is not None:
+                yield cu
 
 # rrids
 
@@ -181,8 +194,9 @@ def process_POST_request(request):
 
     target_uri = getUri(uri, headsoup, bodysoup)
     doi = getDoi(headsoup, bodysoup)
+    pmid = getPmid(headsoup, bodysoup)
     cleaned_text = clean_text(text)
-    return target_uri, doi, head, body, text, cleaned_text
+    return target_uri, doi, pmid, head, body, text, cleaned_text
 
 
 

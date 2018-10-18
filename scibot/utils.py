@@ -71,10 +71,10 @@ def zap_deleted(get_annos):
     embed()
 
 
-def resolution_chain(doi):
-    doi = doi  # TODO
+def resolution_chain(iri):
+    #doi = doi  # TODO
     s = requests.Session()
-    head = requests.head(doi)
+    head = requests.head(iri)
     yield head.url
     while head.is_redirect and head.status_code < 400:  # FIXME redirect loop issue
         yield head.next.url
