@@ -1003,6 +1003,24 @@ def main():
     def check_uri_norm(substring, viewkey=True):
         return sorted(k if viewkey else tuple(sorted(set(_.uri for _ in v))) for k, v in papers.items() if substring in k)
 
+    report = f"""
+    Records
+    total:       {len(aat)}
+    annotations: {len([a for a in aat if a.isAnnotation])}
+    page notes:  {len([a for a in aat if a.isPageNote])}
+    replies:     {len([a for a in aat if a.isReply])}
+    warnings:    {len(warn)}
+    invalid:     {len(inv)}
+    valid:       {len([a for a in aat if a.valid])}
+
+
+    Papers
+    norm uris:  {len(papers)}
+    no pmid:    {len(no_pmid)}
+    no doi:     {len(no_doi)}
+    no id:      {len(no_id)}
+    """
+    print(report)
     embed()
     return
 

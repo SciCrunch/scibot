@@ -3,7 +3,8 @@
 import hashlib
 import logging
 import requests
-from pyontutils.utils import Async, deferred, chunk_list, anyMembers
+from h.util.uri import normalize as uri_normalize
+from pyontutils.utils import Async, deferred, chunk_list, anyMembers, noneMembers
 from IPython import embed
 
 
@@ -209,7 +210,7 @@ def uri_normalization(uri):
                         'index.php?',
                        ):
             # cases where we just use hypothes.is normalization
-            _scheme, normalized = uri_normalize(uri).split('://')
+            _scheme, normalized = uri_normalize(uri).split('://')  # FIXME h dependency
         else:
             normalized = no_scheme
 
