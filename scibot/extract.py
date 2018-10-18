@@ -110,7 +110,7 @@ def getPmid(*soups):
         for args in argslist:
             cu = searchSoup(soup)(*args)
             if cu is not None:
-                yield cu
+                return cu  # FIXME TODO yeild here
 
 # rrids
 
