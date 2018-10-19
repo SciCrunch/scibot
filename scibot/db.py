@@ -405,11 +405,12 @@ class WebsocketSyncFactory(AnnoSyncFactory):
         self.prefilter = preFilter(groups=[group]).export()
         handler = type(f'dbSyncHandler{group}',  # TODO this is where we customize
                        (dbSyncHandler,),
-                       dict(session=self.session))
+                       {}
+                       #dict(session=self.session)
+                       # self.handler gives access to the session
+                       # so in theory don't need this unless treading breaks something
+        )
         self.filter_handlers = [handler(self.handler)]
-        self.group
-        self.username
-        self.api_token
         self.ws_loop, self.exit_loop = setup_websocket(self.api_token, self.prefilter, self.filter_handlers)
         self.threaded = threaded
         self.loop = asyncio.get_event_loop()
