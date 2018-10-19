@@ -24,7 +24,7 @@ def main():
         os.environ.update({'SCIBOT_DATABASE': database})
 
     from scibot import config
-    from scibot.db import getSession, init_scibot, AnnoSyncFactory
+    from scibot.db import getSession, init_scibot, AnnoSyncFactory, WebsocketSyncFactory
 
     if args['db-init']:
         # insurace, it is passed into init direclty as well
@@ -43,7 +43,10 @@ def main():
         pub_sync.sync_annos()
 
     elif args['ws-sync']:
-        'TODO'
+        session = getSession(echo=args['--debug'])
+        WebsocketSync = WebsocketSyncFactory(session)
+        wss = WebsocketSync(config.api_token, config.username, config.group)
+        wss.run()
 
     elif args['debug']:
         from time import time
