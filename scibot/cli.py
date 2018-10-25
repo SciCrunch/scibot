@@ -10,6 +10,7 @@ Usage:
 Options:
     -h --help       show this
     -d --debug      enable echo and embed
+    -k --check      when syncing run checks (required to insert)
 """
 
 import os
@@ -33,14 +34,15 @@ def main():
         init_scibot(database)
 
     elif args['api-sync']:
+        check = args['--check']
         session = getSession(echo=args['--debug'])
         AnnoSync = AnnoSyncFactory(session)
         cur_sync = AnnoSync(config.api_token, config.username,
                             config.group, config.memfile)
-        cur_sync.sync_annos()
+        cur_sync.sync_annos(check=check)
         pub_sync = AnnoSync(config.api_token, config.username,
                             config.group_staging, config.pmemfile)
-        pub_sync.sync_annos()
+        pub_sync.sync_annos(check=check)
 
     elif args['ws-sync']:
         session = getSession(echo=args['--debug'])

@@ -201,7 +201,8 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
 
         def do_check():
             self.log.debug('checking for consistency')
-            annos = self.session.query(models.Annotation).all()
+            annos = self.session.query(models.Annotation).\
+                filter(models.Annotation.groupid == self.group).all()
             #docs = self.session.query(models.Document).all()
             durs = self.session.query(models.DocumentURI).all()
             doc_uris = defaultdict(set)
@@ -209,6 +210,8 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             doc_uris = dict(doc_uris)
             #dms = self.session.query(models.DocumentMeta).all()
             #doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document.id]  # super slow due to orm fetches
+            doc_missing = [a for a in annos if a.id not in anno_id_to_doc_id]
+            assert not doc_missing
             doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document_id]
             assert not doc_mismatch, doc_mismatch
             # don't use the orm to do this, it is too slow even if you send the other queries above
