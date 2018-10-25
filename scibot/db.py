@@ -215,6 +215,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document_id]
             assert not doc_mismatch, doc_mismatch
             # don't use the orm to do this, it is too slow even if you send the other queries above
+            embed()
             uri_mismatch = [(a.target_uri, doc_uris[a.document_id], a)
                             for a in annos
                             if a.target_uri not in doc_uris[a.document_id]]
@@ -228,6 +229,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             assert not super_mismatch, super_mismatch
 
         if check:
+            self.session.flush()  # have to run this to get the doc ids to work?
             do_check()
 
             self.session.commit()
@@ -296,14 +298,19 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         return uri, uri_normalization(uri), quickuri(row)
 
     def q_prepare_docs(self, rows):
-        existing_unnormed = {r.uri:r.document_id
-                             for r in self.session.execute('SELECT uri, document_id FROM document_uri')}
+        existing_unnormed = {r.uri:(r.document_id,
+                                    self.convert[0](r.created),
+                                    self.convert[0](r.updated))
+                             for r in self.session.execute('SELECT uri, document_id, created, '
+                                                           'updated FROM document_uri')}
+        created_updated = {docid:(created, updated)
+               for _, (docid, created, updated) in existing_unnormed.items()}
         _existing = defaultdict(set)
         _ = [_existing[uri_normalization(uri)].add(docid)
-             for uri, docid in existing_unnormed.items()]
+             for uri, (docid, created, updated) in existing_unnormed.items()]
         assert not [_ for _ in _existing.values() if len(_) > 1]  # TODO proper handling for this case
         h_existing_unnormed = {uri_normalize(uri):docid
-                               for uri, docid in existing_unnormed.items()}
+                               for uri, (docid, created, updated) in existing_unnormed.items()}
         existing = {k:next(iter(v)) for k, v in _existing.items()}  # FIXME issues when things get big
 
         new_docs = {}  # FIXME this is completely opaque since it is not persisted anywhere
@@ -312,9 +319,17 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             uri, uri_normed, (created, updated, claims) = self.uri_records(row)
             try:
                 docid = existing[uri_normed]
-                doc = models.Document(id=docid)
+                dc, du = created_updated[docid]
+                doc = models.Document(id=docid, created=dc, updated=du)
+                if doc.updated < updated:
+                    # FIXME TODO update the record?
+                    #self.log.warning('YOU ARE NOT UPDATING A DOC WHEN YOU SHOULD!!!!!!\n'
+                                     #f'{docid} {doc.updated} {updated}')
+                    pass
+
                 do_claims = False
-            except KeyError:
+            except KeyError as e:
+                raise e
                 if uri_normed not in new_docs:
                     do_claims = True
                     doc = models.Document(created=created, updated=updated)
@@ -324,6 +339,8 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                     do_claims = False
                     doc = new_docs[uri_normed]
 
+            #if type(doc.created) == str:
+                #embed()
             yield id, doc
 
             if uri_normalize(uri) not in h_existing_unnormed:
