@@ -8,7 +8,7 @@ from urllib.parse import quote
 from collections import defaultdict
 import requests
 from bs4 import BeautifulSoup
-from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc
+from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc, Async, deferred
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from scibot.config import api_token, username, group, group_staging, memfile, pmemfile
 from scibot.export import bad_tags, get_proper_citation
@@ -561,6 +561,8 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
     _annos = {}
     objects = {}
     _papers = None
+    _olds = set()
+    _curation_ids = None
 
     def __init__(self, anno, annos):
         super().__init__(anno, annos)
@@ -574,22 +576,31 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
             if len(r) > 1:
                 print(tc.red('WARNING:'), f'Duplicate public annotation on RRID paper!\n{r}')
                 #raise TypeError(f'ERROR: Duplicate public annotation on RRID paper!\n{r}')
+                # we want the one that was submitted last because that is the one
+                # that we know we saw and not one that was replayed from the logs
+                *bads, newest = sorted(r, key=lambda a: a.created)
+                cls._olds.update(bads)
+                return newest
             else:
                 return next(iter(r))
 
     @property
     def curation_ids(self):
-        # FIXME extremely slow
-        soup = BeautifulSoup(self._text, 'lxml')  # FIXME etree?
-        p = soup.find('p', {'id':'curation-links'})
-        if p is not None:
-            return [idFromShareLink(a['href']) for a in p.find_all('a')]
-        else:
-            return []
+        if self._curation_ids is None:
+            # FIXME extremely slow
+            soup = BeautifulSoup(self._text, 'lxml')  # FIXME etree?
+            p = soup.find('p', {'id':'curation-links'})
+            if p is not None:
+                self._curation_ids = [idFromShareLink(a['href']) for a in p.find_all('a')]
+            else:
+                self._curation_ids = []
+
+        return self._curation_ids
 
     @property
     def curation_annos(self):
-        return [Curation.byId(i) for i in self.curation_ids]
+        for i in self.curation_ids:
+            yield Curation.byId(i)
 
     @property
     def curation_paper(self):
@@ -681,7 +692,8 @@ class Curation(RRIDAnno):
         if self._done_loading:
             if not self._done_all:  # pretty sure this is obsolete?
                 print('WARNING you ether have a duplicate annotation or your annotations are not sorted by updated.')
-            #self._fetch_xmls(os.path.expanduser('~/ni/dev/rrid/scibot/scibot_rrid_xml.pickle'))
+
+            self._fetch_xmls(os.path.expanduser('~/ni/dev/rrid/scibot/scibot_rrid_xml.pickle'))
                 #print(HypothesisHelper(anno, annos))
                 #embed()
                 #raise BaseException('WHY ARE YOU GETTING CALLED MULTIPLE TIMES?')
@@ -700,16 +712,28 @@ class Curation(RRIDAnno):
     def _fetch_xmls(cls, file=None):
         if cls._done_loading:
             rrids = set(r.rrid for r in cls.objects.values() if r.rrid is not None)
+            # FIXME these are raw rrids that have tons of syntax errors :/
             if file is not None:
                 with open(file, 'rb') as f:
                     cls._xmllib = pickle.load(f)
-            to_fetch = [rrid for rrid in rrids if rrid not in cls._xmllib]
-            print(f'missing {len(to_fetch)} rrids')
-            for rrid in to_fetch:
+            to_fetch = sorted(set(rrid for rrid in rrids if rrid not in cls._xmllib))
+            ltf = len(to_fetch)
+            print(f'missing {ltf} rrids')
+            def get_and_add(i, rrid):
                 url = cls.resolver + rrid + '.xml'
-                print('fetching', url)
+                print(f'fetching {i} of {ltf}', url)
                 resp = requests.get(url)
                 cls._xmllib[rrid] = resp.content
+                if file is not None and i > 0 and not i % 500:
+                    with open(file, 'wb') as f:
+                        pickle.dump(cls._xmllib, f)
+
+            Async(rate=20)(deferred(get_and_add)(i, rrid)
+                           for i, rrid in enumerate(to_fetch))
+
+            if file is not None:
+                with open(file, 'wb') as f:
+                    pickle.dump(cls._xmllib, f)
 
     @property
     def duplicates(self):
@@ -950,11 +974,11 @@ class Curation(RRIDAnno):
                      f'<p id="{p.Citation}">\n'
                      f'{self.proper_citation}\n'
                      '</p>\n'
-                     f'<p id="{p.Res}">SciCrunch record: <a id="scicrunch.org" href="{self.rridLink}">{self.rrid}</a><p>\n'
+                     f'<p id="{p.Res}">SciCrunch record: <a id="scicrunch.org" target="_blank" href="{self.rridLink}">{self.rrid}</a><p>\n'
                      f'<p id="{p.AltRes}">Alternate resolvers:\n'
-                     f'<a id="scicrunch.org" href="{resolver_xml_link}">SciCrunch xml</a>\n'
-                     f'<a id="n2t.net" href="{n2t_link}">N2T</a>\n'
-                     f'<a id="identifiers.org" href="{idents_link}">identifiers.org</a>\n'
+                     f'<a id="scicrunch.org" target="_blank" href="{resolver_xml_link}">SciCrunch xml</a>\n'
+                     f'<a id="n2t.net" target="_blank" href="{n2t_link}">N2T</a>\n'
+                     f'<a id="identifiers.org" target="_blank" href="{idents_link}">identifiers.org</a>\n'
                      '</p>\n') if self.rrid else ''
 
             _slinks = sorted([self.shareLink] + [r.shareLink for r in self.duplicates])
@@ -971,7 +995,7 @@ class Curation(RRIDAnno):
                     f'{links}'
                     f'{second_hr}'
                     f'<p id="{p.Docs}">\n'
-                    f'<a href="{self.docs_link}">What is this?</a>\n'
+                    f'<a target="_blank" href="{self.docs_link}">What is this?</a>\n'
                     '</p>\n'
                     f'{curation_links}'
                     '</body></html>\n')
@@ -1071,6 +1095,9 @@ class Curation(RRIDAnno):
     def post_public(self):
         if READ_ONLY:
             print('WARNING: READ_ONLY is set no action taken')
+        elif self.public_id:
+            print('WARNING: this anno has already been released as {self.public_id!r}\n'
+                  'use Curation.update_public instead to archive the original as well.')
         else:
             if self._public_anno is None:  # dupes of others may go first
                 payload = self.public_payload  # XXX TODO
@@ -1083,6 +1110,14 @@ class Curation(RRIDAnno):
                         return anno, pa
                     else:
                         print(f'Failure to post on {self._python__repr__}')
+
+    def update_public(self):
+        # TODO
+        # 1) check if actual public text != current public text, simple and inefficient
+        # 2) archive the existing public anno
+        # 3) post the new public anno with the previous version id (semi public group)
+        # 4) have that id/link in the text and the json
+        raise NotImplemented
 
     def reply_private(self):  # let's keep things immutable
         response = self.h_curation.post_annotation(self.private_payload)
@@ -1252,8 +1287,38 @@ def sanity_and_stats(rc, annos):
     else:
         print('Found public annos.')
         pas = [PublicAnno(a, pannos) for a in pannos]
+        already_released = [r for r in first_release if r.public_id]
+        second_release = [r for r in first_release if not r.public_id]
+        n_public_without_known_curation = len(pannos) - len(already_released)
+        public_without_known_curation = [pa for pa in pas if not pa.curation_ids]
+        all_cas = [ca for pa in PublicAnno
+                   if pa.curation_annos
+                   for ca in pa.curation_annos
+                   if ca is not None]
+        unique_cas = sorted(set(all_cas))
+        scas = set(unique_cas)
+        sar = set(already_released)
+        in_cas_not_in_released = scas - sar
+        in_released_not_in_cas = sar - scas
+        lcnr = len(in_cas_not_in_released)
+        lrnc = len(in_released_not_in_cas)
+        report = f"""
+        Numbers:
+        first:     {len(already_released)}
+        second:    {len(second_release)}
+        total:     {len(first_release)}
+        
+        I think that the release criteria here skip all cases where there are duplicates.
+
+        Issues:
+        Private annos that public thinks have been released minus the private annos that private thinks have been released:  {lcnr}
+        Private annos that private thinks have been released minus the private annos that public thinks have been released:  {lrnc}
+        I think that this means that public can find some duplicates that cannot find themselves? (257, 0)
+        """
+        print(report)
 
     embed()
+    assert len(already_released) + len(second_release) == len(first_release)
     return
 
     # # annoyances
@@ -1324,6 +1389,13 @@ def sanity_and_stats(rc, annos):
     print(f'For other: {len(other_review)}')
 
     embed()
+
+
+def cleanup():
+    """ second release side jobs that need to be done """
+    public_with_duplicate_known_curation = set(a.id for a in PublicAnno._olds)
+    public_without_known_curation = set(pa.id for pa in pas if not pa.curation_ids)
+    to_delete = public_with_duplicate_known_curation | public_without_known_curation 
 
 def report_gen(papers, unresolved):
     # reporting

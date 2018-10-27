@@ -200,6 +200,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         self.q_create_annos(anno_records, anno_id_to_doc_id)
 
         def do_check():
+            api_rows  # so that it is accessible in function scope
             self.log.debug('checking for consistency')
             annos = self.session.query(models.Annotation).\
                 filter(models.Annotation.groupid == self.group).all()

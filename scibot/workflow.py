@@ -1016,6 +1016,7 @@ def main():
 
     Papers
     norm uris:  {len(papers)}
+    good both:  {len(actually_both)}
     no pmid:    {len(no_pmid)}
     no doi:     {len(no_doi)}
     no id:      {len(no_id)}
