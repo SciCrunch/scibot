@@ -68,3 +68,10 @@ be able to run commands like `python scibot/export.py`.
 14. alternately if using a cert from another registrar you may need to bundle your certs `cat my-cert.crt existing-bundle.crt > scicrunch.io.crt` (see https://gist.github.com/bradmontgomery/6487319 for details)
 15. before or after starting gunicorn you need to run `sudo yum install nginx && sudo cp ~/scibot/nginx.conf /etc/nginx/nginx.conf && sudo service start nginx`
 16. run `pipenv run scibot-sync` in another screen (if run in a terminal with a different environment you need to run step 10 again first)
+
+## Development setup
+To set up scibot for development (for example if you want to run manual releases)
+1. Install python3 and pip for your os (e.g. on macos use `brew`)
+2. `cd ${the-folder-where-this-readme-is-located}`
+3. `pip3 install --user -e .` will install requirements and register the
+scibot folder under version control with python as the scibot module.

@@ -2,6 +2,7 @@
 python_version = '3.6'
 
 [packages]
+h = {editable = true, ref = "flask-new-3", git = "https://github.com/tgbugs/h.git"}
 ontquery = {editable = true, ref = "master", git = "https://github.com/tgbugs/ontquery.git"}
 pyontutils = {editable = true, ref = "master", git = "https://github.com/tgbugs/pyontutils.git"}
 "e1839a8" = {path = ".", editable = true}
