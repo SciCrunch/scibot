@@ -71,7 +71,20 @@ be able to run commands like `python scibot/export.py`.
 
 ## Development setup
 To set up scibot for development (for example if you want to run manual releases)
-1. Install python3 and pip for your os (e.g. on macos use `brew`)
-2. `cd ${the-folder-where-this-readme-is-located}`
+0. Install python3 and pip for your os (e.g. on macos use `brew`)
+1. From your git folder run `git clone https://github.com/tgbugs/scibot.git`
+2. `pushd scibot`
 3. `pip3 install --user -e .` will install requirements and register the
 scibot folder under version control with python as the scibot module.
+4. `popd`
+5. scibot currently makes use of my version of some of the core hypothes.is
+code which is not available as a package, to install it run the following
+```bash
+git clone https://github.com/tgbugs/h.git
+pushd h
+git checkout flask-new-3
+popd
+echo "export PYTHONPATH=$(pwd)/h:${PYTHONPATH}" >> ~/.bashrc
+# may need to be ~/.bash_profile depending on your system
+source ~/.bashrc
+```
