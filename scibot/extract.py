@@ -58,6 +58,16 @@ def searchSoup(soup):
     return search
 
 
+def normalizeDoi(doi):
+    if 'http' in doi:
+        doi = '10.' + doi.split('.org/10.', 1)[-1]
+    elif doi.startswith('doi:'):
+        doi = doi.strip('doi:')
+    elif doi.startswith('DOI:'):
+        doi = doi.strip('DOI:')
+    return doi
+
+
 def getDoi(*soups):
     argslist = (  # these go in order so best returns first
         # TODO bind a handler for these as well...
@@ -78,13 +88,7 @@ def getDoi(*soups):
         for args in argslist:
             doi = searchSoup(soup)(*args)
             if doi is not None:
-                if 'http' in doi:
-                    doi = '10.' + doi.split('.org/10.', 1)[-1]
-                elif doi.startswith('doi:'):
-                    doi = doi.strip('doi:')
-                elif doi.startswith('DOI:'):
-                    doi = doi.strip('DOI:')
-                return doi
+                return normalizeDoi(doi)
 
 
 def getUri(uri, *soups):
