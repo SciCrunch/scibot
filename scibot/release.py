@@ -1427,11 +1427,12 @@ def sanity_and_stats(rc, annos):
     """
     print(report)
 
-    testing = second_release[:10]
+    offset = 10
+    testing = second_release[:offset]
     embed()
-    test = [r.post_staging() for r in testing] 
-    testp = [r.post_public() for r in testing] 
-    # public_posted = [r.post_public() for r in second_release]
+    test = [r.post_staging() for r in testing]
+    testp = [r.post_public() for r in testing]
+    # public_posted = [r.post_public() for r in second_release[offset:]]
     assert len(already_released) + len(second_release) == len(first_release)
     return
 
