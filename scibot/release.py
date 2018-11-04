@@ -10,7 +10,10 @@ import requests
 from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc, Async, deferred
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
+from scibot import config
+from scibot.utils import uri_normalization, uri_normalize
 from scibot.config import api_token, username, group, group_staging, memfile, pmemfile
+from scibot.config import resolver_xml_filepath
 from scibot.export import bad_tags, get_proper_citation
 from scibot.submit import annotate_doi_pmid
 from scibot.services import get_pmid
@@ -195,7 +198,7 @@ class RRIDs(KeyAccessor):
             for o in self._objects[None]:
                 if o._anno.is_page_note or o.user != 'scibot':  # FIXME some curators did these as annotations too...
                     for t in o.tags:
-                        if t.startswith('DOI:'):
+                        if t.startswith('DOI:') and ' ' not in t and t.count(':') == 1:
                             return t
 
     @property
@@ -203,11 +206,11 @@ class RRIDs(KeyAccessor):
         if None in self._objects:
             for o in self._objects[None]:
                 for t in o.tags:
-                    if t.startswith('PMID:'):
+                    if t.startswith('PMID:') and ' ' not in t and t.count(':') == 1:
                         return t
 
 class Papers(KeyAccessor):
-    prop = 'uri'
+    prop = 'uri_normalized'
     object_container_class = RRIDs
 
 
@@ -247,12 +250,12 @@ class DOIRRIDs(KeyAccessor):
 
 
 class MPP(KeyAccessor):
-    prop = 'uri'
+    prop = 'uri_normalized'
     object_container_class = PMIDRRIDs
 
 
 class MPD(KeyAccessor):
-    prop = 'uri'
+    prop = 'uri_normalized'
     object_container_class = DOIRRIDs
 
 
@@ -312,6 +315,8 @@ class RRIDAnno(HypothesisHelper):
 
     @mproperty
     def uri(self):
+        return self._anno.uri
+
         uri = self._anno.uri.replace('https://', 'http://')  # FIXME HACK
         if 'wiley.com' in uri:
             uri = uri.replace('/full', '')
@@ -320,7 +325,8 @@ class RRIDAnno(HypothesisHelper):
         return uri
 
     @mproperty
-    def target(self): return self._anno.target
+    def uri_normalized(self):
+        return uri_normalization(self._anno.uri)
 
     @property
     def _fixed_tags(self):
@@ -404,7 +410,7 @@ class RRIDAnno(HypothesisHelper):
     @property
     def paper(self):
         if self._done_loading:
-            return self._papers[self.uri]
+            return self._papers[self.uri_normalized]
 
     @property
     def doi(self):
@@ -533,6 +539,10 @@ class RRIDAnno(HypothesisHelper):
             elif self.INCOR_TAG in rtags:
                 return None
             return rrid
+        elif self._type == 'pagenote':
+            return None
+        else:
+            log.warning(f'unknown type {self._type}')
 
     @property
     def validated_rrid(self):
@@ -661,6 +671,7 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
 
 class Curation(RRIDAnno):
     docs_link = 'https://scicrunch.org/resources/about/scibot'  # TODO update with explication of the tags
+    resolver_xml_filepath = config.resolver_xml_filepath
     skip_users = 'mpairish',
     h_curation = PublicAnno.h_curation
     h_staging = PublicAnno.h_staging
@@ -693,7 +704,7 @@ class Curation(RRIDAnno):
             if not self._done_all:  # pretty sure this is obsolete?
                 print('WARNING you ether have a duplicate annotation or your annotations are not sorted by updated.')
 
-            self._fetch_xmls(os.path.expanduser('~/ni/dev/rrid/scibot/scibot_rrid_xml.pickle'))
+            self._fetch_xmls()
                 #print(HypothesisHelper(anno, annos))
                 #embed()
                 #raise BaseException('WHY ARE YOU GETTING CALLED MULTIPLE TIMES?')
@@ -709,13 +720,12 @@ class Curation(RRIDAnno):
         cls.stats = dict(nodoi=nodoi, nopmid=nopmid, noid=noid)
 
     @classmethod
-    def _fetch_xmls(cls, file=None):
+    def _fetch_xmls(cls):
         if cls._done_loading:
             rrids = set(r.rrid for r in cls.objects.values() if r.rrid is not None)
             # FIXME these are raw rrids that have tons of syntax errors :/
-            if file is not None:
-                with open(file, 'rb') as f:
-                    cls._xmllib = pickle.load(f)
+            with open(cls.resolver_xml_filepath, 'rb') as f:
+                cls._xmllib = pickle.load(f)
             to_fetch = sorted(set(rrid for rrid in rrids if rrid not in cls._xmllib))
             ltf = len(to_fetch)
             print(f'missing {ltf} rrids')
@@ -724,16 +734,15 @@ class Curation(RRIDAnno):
                 print(f'fetching {i} of {ltf}', url)
                 resp = requests.get(url)
                 cls._xmllib[rrid] = resp.content
-                if file is not None and i > 0 and not i % 500:
-                    with open(file, 'wb') as f:
+                if i > 0 and not i % 500:
+                    with open(cls.resolver_xml_filepath, 'wb') as f:
                         pickle.dump(cls._xmllib, f)
 
             Async(rate=20)(deferred(get_and_add)(i, rrid)
                            for i, rrid in enumerate(to_fetch))
 
-            if file is not None:
-                with open(file, 'wb') as f:
-                    pickle.dump(cls._xmllib, f)
+            with open(cls.resolver_xml_filepath, 'wb') as f:
+                pickle.dump(cls._xmllib, f)
 
     @property
     def duplicates(self):

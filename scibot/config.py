@@ -76,3 +76,6 @@ if group_staging == '__world__':
     pmemfile = f'/tmp/annos-__world__-{username}.pickle'
 else:
     pmemfile = group_to_memfile(group_staging)
+
+# rrid resolver
+resolver_xml_filepath = Path('~/ni/dev/rrid/scibot/scibot_rrid_xml.pickle').expanduser()  # FIXME
