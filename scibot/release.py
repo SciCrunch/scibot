@@ -12,15 +12,26 @@ from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as 
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from scibot import config
 from scibot.utils import uri_normalization, uri_normalize
-from scibot.config import api_token, username, group, group_staging, memfile, pmemfile
+from scibot.config import api_token, username, group, group_staging, memfile, smemfile, pmemfile
 from scibot.config import resolver_xml_filepath
 from scibot.export import bad_tags, get_proper_citation
 from scibot.submit import annotate_doi_pmid
 from scibot.services import get_pmid
+from scibot.workflow import parse_workflow
 from IPython import embed
 
 get_annos = Memoizer(memfile, api_token, username, group)
-get_pannos = Memoizer(pmemfile, api_token, username, group_staging)
+get_sannos = Memoizer(smemfile, api_token, username, group_staging)
+get_pannos = Memoizer(pmemfile, api_token, username, '__world__')
+
+print('getting staged annos')
+sannos = get_sannos()
+print('getting public annos')
+pannos = get_pannos()
+
+tag_types, tag_tokens, partInstances, valid_tagsets, terminal_tagsets, tag_transitions = parse_workflow()
+
+READ_ONLY = False
 
 def getPMID(tags):
     # because sometime there is garbage in the annotations
@@ -264,6 +275,7 @@ class PublicParagraphTags:
     CuratorNote = 'curator-note'
     Curators = 'curators'
     Citation = 'inline-citation'
+    OrigRRID = 'orig-rrid'
     Res = 'main-resolver'
     AltRes = 'alt-resolvers'
     Docs = 'documentation'
@@ -317,13 +329,6 @@ class RRIDAnno(HypothesisHelper):
     def uri(self):
         return self._anno.uri
 
-        uri = self._anno.uri.replace('https://', 'http://')  # FIXME HACK
-        if 'wiley.com' in uri:
-            uri = uri.replace('/full', '')
-            uri = uri.replace('/abs', '')
-
-        return uri
-
     @mproperty
     def uri_normalized(self):
         return uri_normalization(self._anno.uri)
@@ -341,7 +346,8 @@ class RRIDAnno(HypothesisHelper):
         else:
             tags = self._tags
 
-        fixes = {'RRIDCUR:InsufficientMetaData':'RRIDCUR:InsufficientMetadata'}
+        fixes = {'RRIDCUR:InsufficientMetaData':'RRIDCUR:InsufficientMetadata',
+                 'RRIDCUR:MetadataMistmatch':'RRIDCUR:MetadataMismatch',}
         out_tags = []
         for tag in tags:
             if tag in bad_tags:
@@ -378,6 +384,14 @@ class RRIDAnno(HypothesisHelper):
     @mproperty
     def _Missing(self):
         return 'RRIDCUR:Missing' in self._fixed_tags
+
+    @mproperty
+    def _Kill(self):
+        return 'RRIDCUR:Kill' in self._fixed_tags
+
+    @mproperty
+    def Kill(self):
+        return bool([r for r in self.replies if r._Kill]) or self._Kill
 
     @mproperty
     def _NotRRID(self):
@@ -503,11 +517,16 @@ class RRIDAnno(HypothesisHelper):
     def rrid(self):
         rrid = self._original_rrid
 
-        # fix malformed RRIDs
+        # kill malformed RRIDs
         if rrid is not None:
             srrid = rrid.split('RRID:')
             if len(srrid) > 2:
+                rrid = None
+                #rrid = 'RRID:' + srrid[-1]
+            elif len(srrid) == 2:
                 rrid = 'RRID:' + srrid[-1]
+            else:
+                rrid = None
 
         # output logic
         reps = sorted([r for r in self.replies if r.rrid], key=lambda r: r._anno.updated)
@@ -564,10 +583,10 @@ class RRIDAnno(HypothesisHelper):
 
 
 class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the first place
-    staging_group = group_staging
+    staging_group = '__world__'
     release_group = '__world__'
     h_curation = HypothesisUtils(username=username, token=api_token, group=group)
-    h_staging = HypothesisUtils(username=username, token=api_token, group=group_staging)
+    h_public = HypothesisUtils(username=username, token=api_token, group='__world__')
     _annos = {}
     objects = {}
     _papers = None
@@ -636,7 +655,7 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
         if READ_ONLY:
             print('WARNING: READ_ONLY is set no action taken')
         else:
-            r = self.h_staging.patch_annotation(self.id, self._release_payload)
+            r = self.h_public.patch_annotation(self.id, self._release_payload)
             self._release_record = r
             return r
 
@@ -669,12 +688,29 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
         return super().__repr__(depth=depth, format__repr__for_children=string)
 
 
+class StagedAnno(PublicAnno):  # TODO use this to generate the annotation in the first place
+    staging_group = group_staging
+    release_group = '__world__'
+    h_curation = HypothesisUtils(username=username, token=api_token, group=group)
+    h_staging = HypothesisUtils(username=username, token=api_token, group=group_staging)
+    _annos = {}
+    objects = {}
+    _papers = None
+    _olds = set()
+    _curation_ids = None
+
+
 class Curation(RRIDAnno):
+    valid_tagsets = frozenset(frozenset(t.curie for t in s if t.prefix == 'RRIDCUR')
+                              for s in valid_tagsets)
+    terminal_tagsets = frozenset(frozenset(t.curie for t in s if t.prefix == 'RRIDCUR')
+                                 for s in terminal_tagsets)
     docs_link = 'https://scicrunch.org/resources/about/scibot'  # TODO update with explication of the tags
     resolver_xml_filepath = config.resolver_xml_filepath
     skip_users = 'mpairish',
     h_curation = PublicAnno.h_curation
-    h_staging = PublicAnno.h_staging
+    h_staging = StagedAnno.h_staging
+    h_public = PublicAnno.h_public
     private_replies = {}  # in cases where a curator made the annotation
     _annos = {}
     objects = {}
@@ -775,7 +811,9 @@ class Curation(RRIDAnno):
             nodes so that they can have their text updated. """
         if self._InsufficientMetadata:
             return False
-        elif self.NotRRID:
+        elif self.NotRRID:  # FIXME
+            return False
+        elif self.Kill:
             return False
         elif (self.rrid is None and
               self._Missing and
@@ -835,10 +873,12 @@ class Curation(RRIDAnno):
                         # but it is actually incorrect, because replies can ALSO be corrected
                         return True
                     else:
-                        print(tc.red('we should never ge here RRIDCUR:Incorrect is being used incorrectly!'), self.id)
+                        print(tc.red('we should never get here RRIDCUR:Incorrect is being used incorrectly!'), self.id)
             # the case where the original rrid from scibot has
             # been replaced by a corrected rrid from a reply
             # note the implicit rrid != _original_rrid
+            elif self._original_rrid is not None and self._original_rrid != self.rrid and self.NotRRID:
+                return False
             elif self._original_rrid is not None:
                 return True
 
@@ -872,9 +912,13 @@ class Curation(RRIDAnno):
 
     @mproperty
     def bad_tag_logic(self):
-        ptags = self.public_tags
-        return (self._IncorrectMetadata and self._InsufficientMetadata
-                or not self.rrid and 'RRIDCUR:IncorrectMetadata' in ptags
+        ptags = frozenset(t for t in self.public_tags if 'RRID:' not in t)
+        if not ptags:
+            return False
+        else:
+            return ptags not in self.terminal_tagsets
+        return (self._IncorrectMetadata or
+                'RRIDCUR:IncorrectMetadata'  in ptags
                 # incorrect + incorrectmetadata no...
         )
 
@@ -906,6 +950,11 @@ class Curation(RRIDAnno):
             if not pc.startswith('(') and ' ' in pc:
                 pc = f'({pc})'
             return pc
+
+    @mproperty
+    def canonical_rrid(self):
+        if self.proper_citation:
+            return 'RRID:' + self.proper_citation.strip('(').rstrip(')').split('RRID:')[-1]
 
     @property
     def public_id(self):
@@ -968,6 +1017,9 @@ class Curation(RRIDAnno):
     @property
     def public_text(self):  # FIXME duplicates
         # paragraph id= tags
+        if not self.isReleaseNode:  # don't show public text if we aren't releaseing
+            return
+
         p = PublicParagraphTags
         
         if self.isAstNode:
@@ -976,12 +1028,16 @@ class Curation(RRIDAnno):
             curator_note_text = f'{curator_notes}' if self.curator_notes else ''
             curators = ' '.join(f'@{c}' for c in self.curators)
             curator_text = f'<p id="{p.Curators}">Curator: {curators}</p>\n' if self.curators else ''
+            originally_identified_as = (f'<p id="{p.OrigRRID}">Originally identified as: {self.rrid}</p>\n' if
+                                        self.rrid != self.canonical_rrid
+                                        else '')
             resolver_xml_link = f'{self.resolver}{self.rrid}.xml'
             n2t_link = f'http://n2t.net/{self.rrid}'
             idents_link = f'http://identifiers.org/{self.rrid}'
             links = (f'<p>Resource used:</p>\n'
                      f'<p id="{p.Citation}">\n'
                      f'{self.proper_citation}\n'
+                     f'{originally_identified_as}'
                      '</p>\n'
                      f'<p id="{p.Res}">SciCrunch record: <a id="scicrunch.org" target="_blank" href="{self.rridLink}">{self.rrid}</a><p>\n'
                      f'<p id="{p.AltRes}">Alternate resolvers:\n'
@@ -1055,14 +1111,18 @@ class Curation(RRIDAnno):
                 tags.add(tag)
         if self.corrected:
             tags.add(self.CORR_TAG)
-        if self.rrid:
-            tags.add(self.rrid)
+        if self.canonical_rrid:
+            tags.add(self.canonical_rrid)
             #if self._anno.user != self.h_curation.username and self.VAL_TAG not in tags:
                 #tags.add(self.VAL_TAG)  # we are not going add this tag it is _not_ implied
         return sorted(tags)
 
     @property
-    def public_payload(self):
+    def target(self):
+        return self._anno.target
+
+    @property
+    def staging_payload(self):
         if self.isReleaseNode:
             return {
                 'uri':self.uri,
@@ -1070,6 +1130,19 @@ class Curation(RRIDAnno):
                 'group':self.h_staging.group,
                 'user':self.public_user,
                 'permissions':self.h_staging.permissions,
+                'tags':self.public_tags,
+                'text':self.public_text,
+            }
+
+    @property
+    def public_payload(self):
+        if self.isReleaseNode:
+            return {
+                'uri':self.uri,
+                'target':self.target,
+                'group':self.h_public.group,
+                'user':self.public_user,
+                'permissions':self.h_public.permissions,
                 'tags':self.public_tags,
                 'text':self.public_text,
             }
@@ -1096,7 +1169,7 @@ class Curation(RRIDAnno):
     def _public_anno(self):
         # TODO check with the reply that we leave
         try:
-            pa = PublicAnno.getByUriRrid(self.uri, self.rrid)
+            pa = PublicAnno.getByUriRrid(self.uri_normalized, self.rrid)
             return pa
         except (KeyError, ValueError) as e:
             return None
@@ -1111,7 +1184,7 @@ class Curation(RRIDAnno):
             if self._public_anno is None:  # dupes of others may go first
                 payload = self.public_payload  # XXX TODO
                 if payload:
-                    response = self.h_staging.post_annotation(payload)
+                    response = self.h_public.post_annotation(payload)
                     self._public_response = response
                     if response.status_code == 200:
                         anno = HypothesisAnnotation(response.json())
@@ -1119,6 +1192,27 @@ class Curation(RRIDAnno):
                         return anno, pa
                     else:
                         print(f'Failure to post on {self._python__repr__}')
+                        self.failed_public = response
+
+    def post_staging(self):
+        if READ_ONLY:
+            print('WARNING: READ_ONLY is set no action taken')
+        elif self.public_id:
+            print('WARNING: this anno has already been released as {self.public_id!r}\n'
+                  'use Curation.update_public instead to archive the original as well.')
+        else:
+            if self._public_anno is None:  # dupes of others may go first
+                payload = self.staging_payload  # XXX TODO
+                if payload:
+                    response = self.h_staging.post_annotation(payload)
+                    self._public_response = response
+                    if response.status_code == 200:
+                        anno = HypothesisAnnotation(response.json())
+                        pa = StagedAnno.addAnno(anno)
+                        return anno, pa
+                    else:
+                        print(f'Failure to post on {self._python__repr__}')
+                        self.failed_staging = response
 
     def update_public(self):
         # TODO
@@ -1284,49 +1378,60 @@ def sanity_and_stats(rc, annos):
     print('We are disjoint and covering everything we think?', dj)
     first_release = sorted(none_dupes_resolved)
 
-
     #testing = sorted(with_val & with_dupes)
     #tests = testing[-10:]
     #tests = sorted(r for r in fr_better if r.corrected)[-10:]
-    print('getting public annos')
-    pannos = get_pannos()
-    if not pannos:
-        print('No public annos found.')
-        #pannos, pas = zip(*((a, pa) for a, pa in set(r.post_public() for r in tests) if a is not None))
+    if not sannos:
+        print('No staged annos found.')
+        #sannos, pas = zip(*((a, pa) for a, pa in set(r.post_public() for r in tests) if a is not None))
     else:
-        print('Found public annos.')
-        pas = [PublicAnno(a, pannos) for a in pannos]
-        already_released = [r for r in first_release if r.public_id]
-        second_release = [r for r in first_release if not r.public_id]
-        n_public_without_known_curation = len(pannos) - len(already_released)
-        public_without_known_curation = [pa for pa in pas if not pa.curation_ids]
-        all_cas = [ca for pa in PublicAnno
-                   if pa.curation_annos
-                   for ca in pa.curation_annos
-                   if ca is not None]
-        unique_cas = sorted(set(all_cas))
-        scas = set(unique_cas)
-        sar = set(already_released)
-        in_cas_not_in_released = scas - sar
-        in_released_not_in_cas = sar - scas
-        lcnr = len(in_cas_not_in_released)
-        lrnc = len(in_released_not_in_cas)
-        report = f"""
-        Numbers:
-        first:     {len(already_released)}
-        second:    {len(second_release)}
-        total:     {len(first_release)}
-        
-        I think that the release criteria here skip all cases where there are duplicates.
+        pass
+    
+    print('Found public annos.')
+    pas = [PublicAnno(a, pannos) for a in pannos]
+    already_released = [r for r in first_release if r.public_id]
+    second_release_with_old_criteria = [r for r in first_release if not r.public_id]
+    second_release = [r for r in second_release_with_old_criteria
+                      if r.canonical_rrid and not r.bad_tag_logic]
+    second_bad = [r for r in second_release_with_old_criteria
+                  if r.canonical_rrid and r.bad_tag_logic]
+    n_public_without_known_curation = len(pannos) - len(already_released)
+    public_without_known_curation = [pa for pa in pas if not pa.curation_ids]
+    all_cas = [ca for pa in PublicAnno
+                if pa.curation_annos
+                for ca in pa.curation_annos
+                if ca is not None]
+    unique_cas = sorted(set(all_cas))
+    scas = set(unique_cas)
+    sar = set(already_released)
+    in_cas_not_in_released = scas - sar
+    in_released_not_in_cas = sar - scas
+    lcnr = len(in_cas_not_in_released)
+    lrnc = len(in_released_not_in_cas)
+    unique_tags = set(tuple(sorted(t for t in r.public_tags if not t.startswith('RRID:')))
+                      for r in second_release_with_old_criteria)
+    ut_bad = [t for t in unique_tags if frozenset(t) not in Curation.terminal_tagsets]
+    report = f"""
+    Numbers:
+    first:     {len(already_released)}
+    badsec:    {len(second_release_with_old_criteria) - len(second_release)}
+    second:    {len(second_release)}
+    total:     {len(first_release)}
 
-        Issues:
-        Private annos that public thinks have been released minus the private annos that private thinks have been released:  {lcnr}
-        Private annos that private thinks have been released minus the private annos that public thinks have been released:  {lrnc}
-        I think that this means that public can find some duplicates that cannot find themselves? (257, 0)
-        """
-        print(report)
+    I think that the release criteria here skip all cases where there are duplicates.
 
+    Issues:
+    Private annos that public thinks have been released minus the private annos that private thinks have been released:  {lcnr}
+    Private annos that private thinks have been released minus the private annos that public thinks have been released:  {lrnc}
+    I think that this means that public can find some duplicates that cannot find themselves? (257, 0)
+    """
+    print(report)
+
+    testing = second_release[:10]
     embed()
+    test = [r.post_staging() for r in testing] 
+    testp = [r.post_public() for r in testing] 
+    # public_posted = [r.post_public() for r in second_release]
     assert len(already_released) + len(second_release) == len(first_release)
     return
 
