@@ -202,5 +202,111 @@ def process_POST_request(request):
     cleaned_text = clean_text(text)
     return target_uri, doi, pmid, head, body, text, cleaned_text
 
+class PaperId:
+    id_types = (
+        'uri_normalized',
+        'doi',
+        'pmid',
+        'hypothesis_normalized',
+        'uri',
+    )
+    def __init__(self,
+                 uri_normalized,
+                 doi=None,
+                 pmid=None,
+                 hypothesis_normalized=None,
+                 uri=None):
+
+        # names
+        self.uri_normalized = uri_normalized
+        self.doi = OntId(doi) if doi else doi
+        self.pmid = OntId(pmid) if pmid else pmid
+        self.hypothesis_normalized = hypothesis_normalized
+        self.uri = uri
+
+        # amusingly the actual identities
+        self.urn = None  # pdf fingerprint
+        self.text_hash = None
+        self.html_hash = None
+        self.head_hash = None
+        self.body_hash = None
+        self.jats_hash = None
+        self.stripped_hash = None
+
+    @property
+    def _existing_ids(self):
+        for id_type in self.id_types:
+            id = getattr(self, id_type, None)
+            if id is not None:
+                yield id
+
+    @property
+    def existing_ids(self):
+        return set(self._existing_ids)
+
+    @property
+    def _resolvable_ids(self):
+        yield self.doi.iri
+        yield self.uri
+
+    @property
+    def resolvable_ids(self):
+        return set(self._resolvable_ids)
+
+    @property
+    def _chains(self):
+        for id in self.resolvable_ids:
+            yield id, tuple(resolution_chain(id))
+
+    @property
+    def chains(self):
+        return {id:chain for id, chain in self._chains}
+
+    def idPaper(self):
+        if self.doi is None:
+            paper = self
+            doi = paper['DOI']
+            pmid = paper['PMID']
+            print(url)
+            if not self.doi and self.uri.startswith('http'):  # we've go some weird ones in there...
+                doi = scrapeDoi(uri)
+                # scrapeIds(uri)
+                if doi is not None:
+                    print(doi)
+                    pmid = get_pmid(doi)
+                    print('WARNING json malformed in get_pmid')
+                    print(pmid)
+                    resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_curation, [])
+                    print('new doi')
+                    return resp
+            else:
+                print(doi)
+                print('already found')
+
+    def scrapeDoi(self):
+        env = os.environ.copy()
+        cmd_line = ['timeout', '30s', 'google-chrome-unstable', '--headless', '--dump-dom', url]
+        p = subprocess.Popen(cmd_line, stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT,
+                             env=env)
+        out, err = p.communicate()
+        if p.returncode:
+            print('UTOH')
+            return None
+        elif b'ERROR:headless_shell.cc' in out:
+            print(out)
+            raise IOError('Something is wrong...')
+        qurl = quote(url, '')
+        if len(qurl) > 200:
+            qurl = qurl[:200]
+        with open(os.path.expanduser(f'~/files/scibot/{qurl}'), 'wb') as f:
+            f.write(out)
+        both = BeautifulSoup(out, 'lxml')
+        doi = getDoi(both, both)
+        return doi
+
+
+
 
 

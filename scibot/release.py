@@ -200,13 +200,13 @@ class KeyAccessor:
 
 class RRIDs(KeyAccessor):
     """ AKA a Paper """
-    prop = 'rrid'
+    prop = 'canonical_rrid'
     object_container_class = set
 
     @property
     def doi(self):
         if None in self._objects:
-            for o in self._objects[None]:
+            for o in self._objects[None]:  # None holds annos without rrids
                 if o._anno.is_page_note or o.user != 'scibot':  # FIXME some curators did these as annotations too...
                     for t in o.tags:
                         if t.startswith('DOI:') and ' ' not in t and t.count(':') == 1:
@@ -215,15 +215,15 @@ class RRIDs(KeyAccessor):
     @property
     def pmid(self):
         if None in self._objects:
-            for o in self._objects[None]:
+            for o in self._objects[None]:  # None holds annos without rrids
                 for t in o.tags:
                     if t.startswith('PMID:') and ' ' not in t and t.count(':') == 1:
                         return t
 
+
 class Papers(KeyAccessor):
     prop = 'uri_normalized'
     object_container_class = RRIDs
-
 
 class SameDOI(KeyAccessor):
     prop = 'doi'
@@ -1178,7 +1178,7 @@ class Curation(RRIDAnno):
         if READ_ONLY:
             print('WARNING: READ_ONLY is set no action taken')
         elif self.public_id:
-            print('WARNING: this anno has already been released as {self.public_id!r}\n'
+            print(f'WARNING: this anno has already been released as {self.public_id!r}\n'
                   'use Curation.update_public instead to archive the original as well.')
         else:
             if self._public_anno is None:  # dupes of others may go first
@@ -1593,50 +1593,6 @@ def clean_dupes(get_annos, repr_issues=False):
     # get_annos.memoize_annos(annos)
     embed()
 
-def scrapeDoi(url):
-    env = os.environ.copy()
-    cmd_line = ['timeout', '30s', 'google-chrome-unstable', '--headless', '--dump-dom', url]
-    p = subprocess.Popen(cmd_line, stdin=subprocess.PIPE,
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         env=env)
-    out, err = p.communicate()
-    if p.returncode:
-        print('UTOH')
-        return None
-    elif b'ERROR:headless_shell.cc' in out:
-        print(out)
-        raise IOError('Something is wrong...')
-    qurl = quote(url, '')
-    if len(qurl) > 200:
-        qurl = qurl[:200]
-    with open(os.path.expanduser(f'~/files/scibot/{qurl}'), 'wb') as f:
-        f.write(out)
-    both = BeautifulSoup(out, 'lxml')
-    doi = getDoi(both, both)
-    return doi
-
-def idPaper(url):
-    paper = rrcu._papers[url]
-    doi = paper['DOI']
-    pmid = paper['PMID']
-    print(url)
-    if not doi and url.startswith('http'):  # we've go some weird ones in there...
-        doi = scrapeDoi(url)
-        if doi is not None:
-            print(doi)
-            try:
-                pmid = get_pmid(doi)
-            except:  # FIXME stopgap for json weirdness
-                print('WARNING json malformed in get_pmid')
-                pmid = None
-            print(pmid)
-            resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_curation, [])
-            print('new doi')
-            return resp
-    else:
-        print(doi)
-        print('already found')
-
 def review(*objects):
     if len(objects) > 15:
         raise IOError('Trying to review too many ids at once, limit is 15')
@@ -1733,6 +1689,10 @@ def ianno(annos):
     plt.ylabel('Number of curation sessions duration less than x')
     plt.show()
 
+def paper_id_pagenotes():
+    resolution_chain()
+
+
 def main():
     from desc.prof import profile_me
 
@@ -1770,6 +1730,7 @@ def main():
     #_ = [repr(r) for r in rc]  # exorcise the spirits  (this is the slow bit, joblib breaks...)
     try:
         stats = sanity_and_stats(rc, annos)
+        res = paper_id_pagenotes()
         ianno_stats = ianno(annos)
     except AssertionError as e:
         print(e)
