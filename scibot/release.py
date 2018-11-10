@@ -11,15 +11,17 @@ from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc, Async, deferred
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from scibot import config
-from scibot.utils import uri_normalization, uri_normalize
+from scibot.utils import uri_normalization, uri_normalize, makeSimpleLogger
 from scibot.config import api_token, username, group, group_staging, memfile, smemfile, pmemfile
 from scibot.config import resolver_xml_filepath
 from scibot.export import bad_tags, get_proper_citation
 from scibot.submit import annotate_doi_pmid
+from scibot.papers import Papers, SameDOI, SamePMID
 from scibot.services import get_pmid
 from scibot.workflow import parse_workflow
 from IPython import embed
 
+log = makeSimpleLogger('scibot.release')
 get_annos = Memoizer(memfile, api_token, username, group)
 get_sannos = Memoizer(smemfile, api_token, username, group_staging)
 get_pannos = Memoizer(pmemfile, api_token, username, '__world__')
@@ -103,172 +105,6 @@ def mproperty_set(inst, func_name, value):
         raise
     setattr(inst, property_name, value)
 
-class KeyAccessor:
-    # XXX whenever annos changes these need to be recreated as well...
-    # if that is too slow then we will need to implement proper add
-    # and delete for only affected items...
-    """ For when your identifiers aren't python compatible. """
-    prop = 'id'
-    object_container_class = set
-    def __init__(self, objects=tuple(), id_prop=None):
-        self._propagate = issubclass(self.object_container_class, KeyAccessor)
-        self._objects = {}
-        for o in objects:
-            k = getattr(o, self.prop)
-            if k not in self._objects:
-                self._objects[k] = self._make_cont()
-            self._objects[k].add(o)
-
-        self._id_prop = None
-        if id_prop is not None:
-            if objects:
-                print('setting id prop')
-                setattr(self, id_prop, getattr(o, id_prop))  # o from the for loop
-            else:
-                self._id_prop = id_prop
-
-    def _make_cont(self):
-        if self._propagate:
-            cont = self.object_container_class(id_prop=self.prop)
-        else:
-            cont = self.object_container_class()
-        return cont
-
-    def remove(self, object_):
-        k = getattr(object_, self.prop)
-        self._objects[k].remove(object_)
-        if not self._objects[k]:
-            self._objects.pop(k)
-
-    def discard(self, object_):
-        k = getattr(object_, self.prop)
-        self._objects[k].discard(object_)
-        if not self._objects[k]:
-            self._objects.pop(k)
-
-    def add(self, object_):
-        if self._id_prop is not None:
-            setattr(self, self._id_prop, getattr(object_, self._id_prop))
-            self._id_prop = None
-        k = getattr(object_, self.prop)
-        if k not in self._objects:
-            self._objects[k] = self._make_cont()
-
-        self._objects[k].add(object_)
-
-    def keys(self):
-        return sorted(self._objects, key=lambda k: '0' if k is None else k)
-
-    def values(self):
-        for v in list(self._objects.values()):
-            yield v
-
-    def items(self):
-        # we use list() here to simplify synchronization issues with the websocket
-        # since yield allows the thread to shift
-        for k, v in list(self._objects.items()):
-            yield k, v
-
-    def __iter__(self):
-        for k in self._objects:
-            yield k
-
-    def __contains__(self, key):
-        return key in self._objects
-
-    def __getitem__(self, key):
-        try:
-            return self._objects[key]
-        except KeyError:
-            self.__missing__(key)
-
-    #def __setitem__(self, key):
-        #raise TypeError('Cannot set values on this class, it is immutable')
-
-    def __missing__(self, key):
-        raise KeyError(f'{key} not found')
-
-    def __len__(self):
-        return len(self._objects)
-
-    def __repr__(self):
-        return repr({k:v for k,v in self.items()})
-
-    def __str__(self):
-        return str({k:v for k,v in self.items()})
-
-
-class RRIDs(KeyAccessor):
-    """ AKA a Paper """
-    prop = 'canonical_rrid'
-    object_container_class = set
-
-    @property
-    def doi(self):
-        if None in self._objects:
-            for o in self._objects[None]:  # None holds annos without rrids
-                if o._anno.is_page_note or o.user != 'scibot':  # FIXME some curators did these as annotations too...
-                    for t in o.tags:
-                        if t.startswith('DOI:') and ' ' not in t and t.count(':') == 1:
-                            return t
-
-    @property
-    def pmid(self):
-        if None in self._objects:
-            for o in self._objects[None]:  # None holds annos without rrids
-                for t in o.tags:
-                    if t.startswith('PMID:') and ' ' not in t and t.count(':') == 1:
-                        return t
-
-
-class Papers(KeyAccessor):
-    prop = 'uri_normalized'
-    object_container_class = RRIDs
-
-class SameDOI(KeyAccessor):
-    prop = 'doi'
-    object_container_class = Papers
-
-
-class SamePMID(KeyAccessor):
-    prop = 'pmid'
-    object_container_class = Papers
-
-
-class MultiplePMID(KeyAccessor):
-    prop = 'doi'
-    object_container_class = SamePMID
-
-
-class MultipleDOI(KeyAccessor):
-    prop = 'pmid'
-    object_container_class = SameDOI
-
-
-class RRIDSimple(KeyAccessor):
-    prop = 'rrid'
-    object_container_class = set
-
-
-class PMIDRRIDs(KeyAccessor):
-    prop = 'pmid'
-    object_container_class = RRIDSimple
-
-
-class DOIRRIDs(KeyAccessor):
-    prop = 'doi'
-    object_container_class = RRIDSimple
-
-
-class MPP(KeyAccessor):
-    prop = 'uri_normalized'
-    object_container_class = PMIDRRIDs
-
-
-class MPD(KeyAccessor):
-    prop = 'uri_normalized'
-    object_container_class = DOIRRIDs
-
 
 class PublicParagraphTags:
     Alert = 'alert'
@@ -281,24 +117,8 @@ class PublicParagraphTags:
     Docs = 'documentation'
     CurLinks = 'curation-links'
 
-class RRIDAnno(HypothesisHelper):
-    resolver = 'http://scicrunch.org/resolver/'
-    REPLY_TAG = 'RRIDCUR:Released'
-    #SKIP_DUPE_TAG = 'RRIDCUR:Duplicate-Released'  # sigh...
-    SUCCESS_TAG = 'RRIDCUR:Released'
-    INCOR_TAG = 'RRIDCUR:Incorrect' 
-    CORR_TAG = 'RRIDCUR:Corrected'
-    UNRES_TAG = 'RRIDCUR:Unresolved'
-    VAL_TAG = 'RRIDCUR:Validated'
-    skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
-    _annos = {}
-    _replies = {}
-    objects = {}
+class PaperHelper(HypothesisHelper):
     _papers = None
-    _dois = None
-    _pmids = None
-    _done_all = False
-
     def __init__(self, anno, annos):
         super().__init__(anno, annos)
         if self._done_loading:
@@ -318,6 +138,25 @@ class RRIDAnno(HypothesisHelper):
                 self.__class__._pmids.add(self)
 
             self.__class__._done_all = True
+
+
+class RRIDAnno(PaperHelper):
+    resolver = 'http://scicrunch.org/resolver/'
+    REPLY_TAG = 'RRIDCUR:Released'
+    #SKIP_DUPE_TAG = 'RRIDCUR:Duplicate-Released'  # sigh...
+    SUCCESS_TAG = 'RRIDCUR:Released'
+    INCOR_TAG = 'RRIDCUR:Incorrect'
+    CORR_TAG = 'RRIDCUR:Corrected'
+    UNRES_TAG = 'RRIDCUR:Unresolved'
+    VAL_TAG = 'RRIDCUR:Validated'
+    skip_tags = 'RRIDCUR:Duplicate', 'RRIDCUR:Unrecognized', *bad_tags
+    _annos = {}
+    _replies = {}
+    objects = {}
+    _papers = None
+    _dois = None
+    _pmids = None
+    _done_all = False
 
     @mproperty
     def created(self): return self._anno.created
@@ -769,6 +608,9 @@ class Curation(RRIDAnno):
                 url = cls.resolver + rrid + '.xml'
                 print(f'fetching {i} of {ltf}', url)
                 resp = requests.get(url)
+                if resp.status_code >= 500:
+                    log.warning(f'Failed to fetch {url} due to {request.reason}')
+                    return
                 cls._xmllib[rrid] = resp.content
                 if i > 0 and not i % 500:
                     with open(cls.resolver_xml_filepath, 'wb') as f:
@@ -1178,7 +1020,7 @@ class Curation(RRIDAnno):
         if READ_ONLY:
             print('WARNING: READ_ONLY is set no action taken')
         elif self.public_id:
-            print(f'WARNING: this anno has already been released as {self.public_id!r}\n'
+            print('WARNING: this anno has already been released as {self.public_id!r}\n'
                   'use Curation.update_public instead to archive the original as well.')
         else:
             if self._public_anno is None:  # dupes of others may go first
@@ -1430,8 +1272,9 @@ def sanity_and_stats(rc, annos):
     offset = 10
     testing = second_release[:offset]
     embed()
+    return
     test = [r.post_staging() for r in testing]
-    testp = [r.post_public() for r in testing]
+    #testp = [r.post_public() for r in testing]
     # public_posted = [r.post_public() for r in second_release[offset:]]
     assert len(already_released) + len(second_release) == len(first_release)
     return
@@ -1689,9 +1532,6 @@ def ianno(annos):
     plt.ylabel('Number of curation sessions duration less than x')
     plt.show()
 
-def paper_id_pagenotes():
-    resolution_chain()
-
 
 def main():
     from desc.prof import profile_me
@@ -1730,7 +1570,6 @@ def main():
     #_ = [repr(r) for r in rc]  # exorcise the spirits  (this is the slow bit, joblib breaks...)
     try:
         stats = sanity_and_stats(rc, annos)
-        res = paper_id_pagenotes()
         ianno_stats = ianno(annos)
     except AssertionError as e:
         print(e)
