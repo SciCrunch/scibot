@@ -609,7 +609,7 @@ class Curation(RRIDAnno):
                 print(f'fetching {i} of {ltf}', url)
                 resp = requests.get(url)
                 if resp.status_code >= 500:
-                    log.warning(f'Failed to fetch {url} due to {request.reason}')
+                    log.warning(f'Failed to fetch {url} due to {resp.reason}')
                     return
                 cls._xmllib[rrid] = resp.content
                 if i > 0 and not i % 500:
