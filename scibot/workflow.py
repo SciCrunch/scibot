@@ -2,10 +2,11 @@ from collections import defaultdict
 from pathlib import Path
 from rdflib import URIRef
 from IPython import embed
-from pyontutils.core import makeGraph, OntId, OntCuries
+from pyontutils.core import makeGraph, OntId
 import pyontutils.graphml_to_ttl as gt
 from pyontutils import combinators as cmb
 from pyontutils.utils import working_dir, TermColors as tc
+from pyontutils.namespaces import OntCuries
 from pyontutils.graphml_to_ttl import workflow as wf, RRIDCUR
 from pyontutils.closed_namespaces import rdf, rdfs, owl
 from itertools import chain
