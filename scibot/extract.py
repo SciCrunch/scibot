@@ -6,19 +6,22 @@ def col0(pairs): return list(zip(*pairs))[0]
 def col1(pairs): return list(zip(*pairs))[1]
 
 # prefixes
+
+agprefixes = (
+    ('Addgene', 'Addgene'),
+    ('addgene', 'Addgene'),
+    ('plasmid', 'Addgene'),
+    ('Plasmid', 'Addgene'),
+    ('addgene cat', 'Addgene'),
+    ('addgene.org', 'Addgene'),
+    ('addgene ID', 'Addgene'),  # probably won't work
+    ('addgene cat. no.', 'Addgene'),  # probably won't work
+)
+
 prefixes = (
     ('AB', 'AB'),
     ('AGSC', 'AGSC'),
     ('ARC', 'IMSR_ARC'),
-    ('addgene', 'Addgene'),
-    ('addgene plasmid', 'Addgene'),
-    ('addgene, plasmid', 'Addgene'),
-    ('addgene#', 'Addgene'),
-    ('addgene #', 'Addgene'),
-    ('addgene cat. no.', 'Addgene'),
-    ('addgene cat#', 'Addgene'),
-    ('addgene ID', 'Addgene'),
-    ('addgene.org/', 'Addgene'),
     ('BCBC', 'BCBC'),
     ('BDSC', 'BDSC'),
     ('CGC', 'CGC'),
@@ -51,6 +54,7 @@ prefixes = (
 )
 prefix_lookup = {k:v for k, v in prefixes}
 prefix_lookup['CVCL'] = 'CVCL'  # ah special cases
+prefix_lookup.update({k:v for k, v in agprefixes})
 
 # paper identifiers
 
@@ -170,15 +174,25 @@ def find_rrids(text):
     # second round
     orblock = '(' + '|'.join(col0(prefixes)) + ')'
     sep = '(:|_)([ \t]*)'
-    regex2 = '(.{0,32})(?:' + orblock + '{sep}(\d+)|(CVCL){sep}(\w+))([^\w].{{0,31}})'.format(sep=sep)  # the first 0,32 always greedy matches???
+    agsep = '([ \t]*#)([ \t]*)'
+    agorblock = '(' + '|'.join(col0(agprefixes)) + ')'
+    regex2 = ('(.{0,32})(?:' + orblock + f'{sep}(\d+)|(CVCL){sep}(\w+)|'
+              + agorblock + f'{agsep}(\w+))([^\w].{{0,31}})')  # the first 0,32 always greedy matches???
     matches2 = re.findall(regex2, text)  # FIXME this doesn't work since our prefix/suffix can be 'wrong'
-    for prefix, namespace, sep, spaces, nums, cvcl, cvcl_sep, cvcl_spaces, cvcl_nums, suffix in matches2:
+    for (prefix, namespace, sep, spaces, nums,
+         cvcl, cvcl_sep, cvcl_spaces, cvcl_nums,
+         ag, ag_sep, ag_spaces, ag_nums,
+         suffix) in matches2:
         if cvcl:
             #print('\t\t', (prefix, namespace, sep, spaces, nums, cvcl, cvcl_sep, cvcl_spaces, cvcl_nums, suffix))
             namespace, sep, spaces, nums = cvcl, cvcl_sep, cvcl_spaces, cvcl_nums  # sigh
+        elif ag:
+            namespace, sep, spaces, nums = ag, ag_sep, ag_spaces, ag_nums  # sigh
         if re.match(regex1, ''.join((prefix, namespace, sep, spaces, nums, suffix))) is not None:
             #print('already matched')
             continue  # already caught it above and don't want to add it again
+        if ag:  # switch sep for addgene after match
+            sep = '_'
         exact_for_hypothesis = namespace + sep + nums
         resolver_namespace = prefix_lookup[namespace]
         exact = 'RRID:' + resolver_namespace + sep + nums
