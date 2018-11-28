@@ -24,7 +24,13 @@ from hyputils.hypothesis import HypothesisUtils
 from scibot.config import source_log_location
 from scibot.utils import makeSimpleLogger
 from scibot.export import export_impl, export_json_impl
-from scibot.workflow import curatorTags
+
+try:
+    from scibot.workflow import curatorTags
+except ImportError:
+    # FIXME don't want a hard rdflib dependency here
+    curatorTags = lambda : []
+
 from IPython import embed
 
 log = makeSimpleLogger('scibot.submit')
