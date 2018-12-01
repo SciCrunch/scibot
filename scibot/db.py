@@ -241,8 +241,8 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
     def q_create_annos(self, anno_records, anno_id_to_doc_id):
         # NOTE values_sets adds the document_id field and
         # so self.types must be called after values_sets completes
-        *values_templates, values, bindparams = makeParamsValues(*self.values_sets(anno_records,
-                                                                                   anno_id_to_doc_id),
+        values_sets = tuple(self.values_sets(anno_records, anno_id_to_doc_id))
+        *values_templates, values, bindparams = makeParamsValues(*values_sets,
                                                                  types=self.types(anno_records))
         rec_keys = self.get_rec_keys(anno_records)
         sql = text(f'INSERT INTO annotation ({", ".join(rec_keys)}) VALUES {", ".join(values_templates)}')
