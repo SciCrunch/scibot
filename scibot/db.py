@@ -216,7 +216,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document_id]
             assert not doc_mismatch, doc_mismatch
             # don't use the orm to do this, it is too slow even if you send the other queries above
-            embed()
+            #embed()
             uri_mismatch = [(a.target_uri, doc_uris[a.document_id], a)
                             for a in annos
                             if a.target_uri not in doc_uris[a.document_id]]
@@ -239,7 +239,10 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             embed()
 
     def q_create_annos(self, anno_records, anno_id_to_doc_id):
-        *values_templates, values, bindparams = makeParamsValues(*self.values_sets(anno_records, anno_id_to_doc_id),
+        # NOTE values_sets adds the document_id field and
+        # so self.types must be called after values_sets completes
+        *values_templates, values, bindparams = makeParamsValues(*self.values_sets(anno_records,
+                                                                                   anno_id_to_doc_id),
                                                                  types=self.types(anno_records))
         rec_keys = self.get_rec_keys(anno_records)
         sql = text(f'INSERT INTO annotation ({", ".join(rec_keys)}) VALUES {", ".join(values_templates)}')
@@ -261,7 +264,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
 
             return k
 
-        return [fix_reserved(k) for k in anno_records[0].keys()] + ['document_id']
+        return [fix_reserved(k) for k in anno_records[0].keys()]
 
     def values_sets(self, anno_records, anno_id_to_doc_id):
         def type_fix(k, v):  # TODO is this faster or is type_fix?
@@ -275,7 +278,9 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         def make_vs(d):
             id = d['id']
             document_id = anno_id_to_doc_id[id]
-            return [type_fix(k, v) for k, v in d.items()] + [document_id],  # don't miss the , to make this a value set
+            d['document_id'] = document_id
+            # FIXME does ordering matter here!?
+            return [type_fix(k, v) for k, v in d.items()],  # don't miss the , to make this a value set
 
         yield from (make_vs(d) for d in anno_records)
         self.log.debug('anno values sets done')
@@ -289,7 +294,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                     return ARRAY(URLSafeUUID)
                 else:
                     return None
-            return [inner(k) for k in d] + [None]  # note this is continuous there is no comma
+            return [inner(k) for k in d]
 
         yield from (make_types(d) for d in datas)
 
@@ -330,7 +335,8 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
 
                 do_claims = False
             except KeyError as e:
-                raise e
+                if existing:
+                    raise e
                 if uri_normed not in new_docs:
                     do_claims = True
                     doc = models.Document(created=created, updated=updated)
