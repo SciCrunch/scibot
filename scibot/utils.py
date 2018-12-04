@@ -1,6 +1,5 @@
 #!/usr/bin/env python3.6
 
-import hashlib
 import logging
 import requests
 from h.util.uri import normalize as uri_normalize
@@ -34,15 +33,6 @@ def makeSimpleLogger(name):
     ch.setFormatter(formatter)
     logger.addHandler(ch)
     return logger
-
-
-def group_to_memfile(group, post=lambda group_hash:None):
-    m = hashlib.sha256()
-    m.update(group.encode())
-    group_hash = m.hexdigest()
-    memfile = f'/tmp/annos-{group_hash}.pickle'
-    post(group_hash)
-    return memfile
 
 
 def zap_deleted(get_annos):
