@@ -545,7 +545,7 @@ class Curation(RRIDAnno):
     terminal_tagsets = frozenset(frozenset(t.curie for t in s if t.prefix == 'RRIDCUR')
                                  for s in terminal_tagsets)
     docs_link = 'https://scicrunch.org/resources/about/scibot'  # TODO update with explication of the tags
-    resolver_xml_filepath = config.resolver_xml_filepath
+    resolver_xml_filepath = config.resolver_xml_filepath.as_posix()
     skip_users = 'mpairish',
     h_curation = PublicAnno.h_curation
     h_staging = StagedAnno.h_staging
