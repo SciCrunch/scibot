@@ -102,17 +102,21 @@ class RRIDs(KeyAccessor):
     def doi(self):
         if None in self._objects:
             for o in self._objects[None]:
+                if o.KillPageNote:
+                    continue
                 if o._anno.is_page_note or o.user != 'scibot':  # FIXME some curators did these as annotations too...
                     for t in o.tags:
-                        if t.startswith('DOI:') and ' ' not in t and t.count(':') == 1:
+                        if t.startswith('DOI:') and ' ' not in t and '\n' not in t and t.count(':') == 1:
                             return t
 
     @property
     def pmid(self):
         if None in self._objects:
             for o in self._objects[None]:
+                if o.KillPageNote:
+                    continue
                 for t in o.tags:
-                    if t.startswith('PMID:') and ' ' not in t and t.count(':') == 1:
+                    if t.startswith('PMID:') and ' ' not in t and '\n' not in t and t.count(':') == 1:
                         return t
 
 
