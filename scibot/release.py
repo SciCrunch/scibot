@@ -225,6 +225,14 @@ class RRIDAnno(PaperHelper):
         return 'RRIDCUR:Missing' in self._fixed_tags
 
     @mproperty
+    def _KillPageNote(self):
+        return 'RRIDCUR:KillPageNote' in self._fixed_tags
+
+    @mproperty
+    def KillPageNote(self):
+        return bool([r for r in self.replies if r._KillPageNote]) or self._KillPageNote
+
+    @mproperty
     def _Kill(self):
         return 'RRIDCUR:Kill' in self._fixed_tags
 
@@ -657,12 +665,15 @@ class Curation(RRIDAnno):
             return False
         elif self.Kill:
             return False
+        elif self.KillPageNote:
+            return False
         elif (self.rrid is None and
               self._Missing and
               'RRID:' not in self._text):
             return False
         elif (self.isAstNode and not getPMID(self._fixed_tags) or
             self._type == 'pagenote' and getDOI(self._fixed_tags)):
+            # FIXME I think this is where the no id releases came from
             return True
         else:
             return False
