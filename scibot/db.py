@@ -13,6 +13,7 @@ from h.util.user import split_user
 from h.models.document import update_document_metadata
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
+from sqlalchemy.sql.expression import bindparam
 from sqlalchemy.orm.session import sessionmaker
 from sqlalchemy.dialects.postgresql import ARRAY
 from hyputils.hypothesis import Memoizer
@@ -162,7 +163,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
     def get_api_rows(self, search_after=None, stop_at=None):
         try:
             if self.group == '__world__':
-                self.condition = 'WHERE groupid = :groupid AND userid = :userid '
+                self.condition = 'WHERE groupid = :groupid AND userid = :userid ORDER BY updated DESC LIMIT 1'
                 userid = f'acct:{self.username}@hypothes.is'  # FIXME other registration authorities
                 last_updated = next(self.execute(params={'groupid':self.group,
                                                          'userid':userid})).updated
@@ -194,6 +195,23 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                 return
 
         anno_records = [quickload(r) for r in api_rows]
+
+        #qsql = 'SELECT distinct(id, updated) FROM annotation WHERE groupid=:groupid'  # makes it a string :/
+        qsql = 'SELECT id, updated, document_id FROM annotation WHERE groupid=:groupid'
+        params = dict(groupid=api_rows[0]['group'])
+        existing = self.session.execute(qsql, params)
+        dext = {_get_urlsafe_from_hex(id.hex):(up, did) for id, up, did in existing}
+        dupes = [(a, dext[a['id']][0].isoformat() + '+00:00') for a in anno_records if a['id'] in dext]
+        maybe_update = [a['id'] for a, u in dupes if a['updated'] > u]
+        assert len(dupes) == len(maybe_update)
+        #to_update = tuple(_get_hex_from_urlsafe(i) i for i in maybe_update)
+        to_delete = {f'id{i}':v for i, v in enumerate(maybe_update)}
+        names_or = ' OR '.join(f'id = :{p}' for p in to_delete)
+        _dsql = text(f'DELETE FROM annotation WHERE {names_or}')
+        bindparams=tuple(bindparam(name, type_=URLSafeUUID) for name in to_delete)
+        dsql = _dsql.bindparams(*bindparams)
+        # delete to avoid collisions, they will be added again later and then finalized when the transaction finishes
+        self.session.execute(dsql, to_delete)
         self.log.debug(f'quickload complete for {len(api_rows)} api_rows')
 
         anno_id_to_doc_id = self.q_create_docs(api_rows)
@@ -318,6 +336,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         h_existing_unnormed = {uri_normalize(uri):docid
                                for uri, (docid, created, updated) in existing_unnormed.items()}
         existing = {k:next(iter(v)) for k, v in _existing.items()}  # FIXME issues when things get big
+        latest_existing = max(u for c, u in created_updated.values())
 
         new_docs = {}  # FIXME this is completely opaque since it is not persisted anywhere
         for row in sorted(rows, key=lambda r: r['created']):
@@ -336,7 +355,9 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                 do_claims = False
             except KeyError as e:
                 if existing:
-                    raise e
+                    if row['updated'] <= latest_existing:
+                        # only need to worry if we are recreating
+                        raise e
                 if uri_normed not in new_docs:
                     do_claims = True
                     doc = models.Document(created=created, updated=updated)
