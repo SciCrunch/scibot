@@ -35,7 +35,8 @@ def main():
 
     elif args['api-sync']:
         check = args['--check']
-        session = getSession(echo=args['--debug'])
+        dburi = config.dbUri(user='scibot-admin')  # needed ofr update
+        session = getSession(dburi=dburi, echo=args['--debug'])
         AnnoSync = AnnoSyncFactory(session)
         cur_sync = AnnoSync(config.api_token, config.username,
                             config.group, config.memfile)
