@@ -5,12 +5,12 @@ from datetime import datetime
 from itertools import chain
 from collections import namedtuple, defaultdict
 import json
-from h import models
-from h.db import init
-from h.util.uri import normalize as uri_normalize
-from h.db.types import _get_hex_from_urlsafe, _get_urlsafe_from_hex, URLSafeUUID
-from h.util.user import split_user
-from h.models.document import update_document_metadata
+from hyputils.memex import models
+from hyputils.memex.db import init
+from hyputils.memex.util.uri import normalize as uri_normalize
+from hyputils.memex.db.types import _get_hex_from_urlsafe, _get_urlsafe_from_hex, URLSafeUUID
+from hyputils.memex.util.user import split_user
+from hyputils.memex.models.document import update_document_metadata
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 from sqlalchemy.sql.expression import bindparam

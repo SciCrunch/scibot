@@ -2,7 +2,7 @@
 
 import logging
 import requests
-from h.util.uri import normalize as uri_normalize
+from hyputils.memex.util.uri import normalize as uri_normalize
 from pyontutils.utils import Async, deferred, chunk_list, anyMembers, noneMembers
 from IPython import embed
 

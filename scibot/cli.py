@@ -57,7 +57,7 @@ def main():
         if True:
             dcount = {r.uri:r.document_id
                     for r in session.execute('SELECT uri, document_id FROM document_uri')}
-            from h import models
+            from hyputils.memex import models
             from hyputils.hypothesis import Memoizer
             from scibot.anno import disambiguate_uris
             from interlex.core import makeParamsValues

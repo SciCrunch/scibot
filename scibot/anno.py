@@ -1,8 +1,8 @@
 from collections import defaultdict
-from h import models
-from h.util.uri import normalize as uri_normalize
-from h.models.document import update_document_metadata
-from h.schemas.annotation import CreateAnnotationSchema
+from hyputils.memex import models
+from hyputils.memex.util.uri import normalize as uri_normalize
+from hyputils.memex.models.document import update_document_metadata
+from hyputils.memex.schemas.annotation import CreateAnnotationSchema
 from pyontutils.utils import anyMembers, noneMembers
 from IPython import embed
 
