@@ -206,12 +206,15 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         assert len(dupes) == len(maybe_update)
         #to_update = tuple(_get_hex_from_urlsafe(i) i for i in maybe_update)
         to_delete = {f'id{i}':v for i, v in enumerate(maybe_update)}
-        names_or = ' OR '.join(f'id = :{p}' for p in to_delete)
-        _dsql = text(f'DELETE FROM annotation WHERE {names_or}')
-        bindparams=tuple(bindparam(name, type_=URLSafeUUID) for name in to_delete)
-        dsql = _dsql.bindparams(*bindparams)
-        # delete to avoid collisions, they will be added again later and then finalized when the transaction finishes
-        self.session.execute(dsql, to_delete)
+        if to_delete:
+            names_or = ' OR '.join(f'id = :{p}' for p in to_delete)
+            _dsql = text(f'DELETE FROM annotation WHERE {names_or}')
+            bindparams=tuple(bindparam(name, type_=URLSafeUUID) for name in to_delete)
+            dsql = _dsql.bindparams(*bindparams)
+            # delete to avoid collisions, they will be added again later and
+            # then finalized when the transaction finishes
+            self.session.execute(dsql, to_delete)
+
         self.log.debug(f'quickload complete for {len(api_rows)} api_rows')
 
         anno_id_to_doc_id = self.q_create_docs(api_rows)
@@ -265,6 +268,26 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         rec_keys = self.get_rec_keys(anno_records)
         sql = text(f'INSERT INTO annotation ({", ".join(rec_keys)}) VALUES {", ".join(values_templates)}')
         sql = sql.bindparams(*bindparams)
+
+        def debug_type(column):
+            # FIXME column name collisions
+            col = models.Annotation.__table__.columns[column]
+            ctype = col.type.python_type
+            ind = rec_keys.index(column)
+            for values, in values_sets:
+                if type(values[ind]) != ctype:
+                    print('ERROR IN ', values)
+
+        def debug_templates(column):
+            col = models.Annotation.__table__.columns[column]
+            ctype = col.type.python_type
+            for t in values_templates:
+                for k, ws_c_vn_ws in zip(rec_keys, t.strip('(').rstrip(')').split(',')):
+                    vn = ws_c_vn_ws.strip().rstrip().strip(':')
+                    v = values[vn]
+                    if k == column and type(v) != ctype:
+                        print('ERROR IN', t)
+
         try:
             self.session.execute(sql, values)
             self.log.debug('anno execute done')
@@ -336,7 +359,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
         h_existing_unnormed = {uri_normalize(uri):docid
                                for uri, (docid, created, updated) in existing_unnormed.items()}
         existing = {k:next(iter(v)) for k, v in _existing.items()}  # FIXME issues when things get big
-        latest_existing = max(u for c, u in created_updated.values())
+        latest_existing = max(u for c, u in created_updated.values()) if created_updated else None
 
         new_docs = {}  # FIXME this is completely opaque since it is not persisted anywhere
         for row in sorted(rows, key=lambda r: r['created']):
