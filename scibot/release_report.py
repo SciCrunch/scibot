@@ -30,6 +30,14 @@ class RRIDData:
         WHERE source = 'Hypothesis' '''
         yield from self.session.execute(sql)
 
+    def missing_pmids(self):
+        sql = '''SELECT distinct(pmid) FROM rrid_mentions'''
+        sql2 = '''SELECT distinct(concat("PMID:", pmid)) FROM rrid_mentions_literature_records'''
+        all_pmids = set(p for p, in self.session.execute(sql))
+        pmids_in_lit_table = set(p for p, in self.session.execute(sql2))
+        missing = all_pmids - pmids_in_lit_table
+        return missing
+
     def combine(self, rrid_recs=None):
         if rrid_recs is None:
             rrid_recs = self.james_rrids()
@@ -125,6 +133,7 @@ def main():
     Session = sessionmaker()
     Session.configure(bind=engine)
     session = Session()
+    rd = RRIDData(session)
 
     annos = get_annos()
     Curation._annos_list = annos
@@ -141,7 +150,6 @@ def main():
         c = r.crrid if r.crrid else ''
         return i, p, u, c
 
-    rd = RRIDData(session)
     rrid_recs = [r for r in rd.james_rrids() if r.uri]
 
     rd = RRIDData(session)
