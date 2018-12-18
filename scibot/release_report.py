@@ -1,8 +1,11 @@
 #!/usr/bin/env python3.6
 import csv
+import socket
 from collections import namedtuple, Counter
+from pyontutils.utils import mysql_conn_helper
 from scibot.release import Curation, PublicAnno, get_annos, get_pannos
 from scibot.utils import uri_normalization
+from scibot import config
 from IPython import embed
 
 
@@ -167,6 +170,25 @@ def main():
     with open('scibot-rrid-all.csv', 'wt') as f:
         writer = csv.writer(f, lineterminator='\n')
         writer.writerows(report)
+
+    # FIXME PublicAnno pmid and doi do not work correctly ...
+    # FIXME there are 233 annotations with public ids and public rrids
+    # that do not have an rrid, meaning that the backlinks got scrambled somehow !
+    public_report =  [(c.pmid, c.canonical_rrid, c.rrid,
+                       c._public_anno.shareLink,
+                       c._anno.prefix, c.exact, c._anno.suffix,)
+                                 for c in Curation
+                                 if c.isAstNode and c.public_id is not None and
+                      c.pmid is not None and c.rrid is not None and
+                      not c.NotRRID and c.canonical_rrid is not None]
+    wat = [r for r in public_report if None in r]
+    public_report.sort()
+    pheader = 'pmid', 'canonical rrid', 'rrid', 'public share link', 'prefix', 'exact', 'suffix'
+    public_report = [pheader] + public_report
+
+    with open('scibot-rrid-public-simple.csv', 'wt') as f:
+        writer = csv.writer(f, lineterminator='\n')
+        writer.writerows(public_report)
 
     embed()
 
