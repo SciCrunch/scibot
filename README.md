@@ -88,3 +88,7 @@ echo "export PYTHONPATH=$(pwd)/h:${PYTHONPATH}" >> ~/.bashrc
 # may need to be ~/.bash_profile depending on your system
 source ~/.bashrc
 ```
+
+## If all else fails
+Make sure you have >=python3.6 and pip installed.
+Clone the repo and run `python setup.py develop --user`.
