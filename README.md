@@ -1,4 +1,5 @@
 # SciBot
+[![PyPI version](https://badge.fury.io/py/scibot.svg)](https://pypi.org/project/scibot/)
 
 curation workflow automation and coordination
 
