@@ -371,6 +371,7 @@ class RRIDAnno(PaperHelper):
                 rrid = None
                 #rrid = 'RRID:' + srrid[-1]
             elif len(srrid) == 2:
+                srrid = srrid.replace('\n', ' ')  # FIXME
                 rrid = 'RRID:' + srrid[-1]
             else:
                 rrid = None
@@ -619,6 +620,10 @@ class Curation(RRIDAnno):
                 if resp.status_code >= 500:
                     log.warning(f'Failed to fetch {url} due to {resp.reason}')
                     return
+                elif resp.status_code == 404:
+                    log.warning(f'Failed to fetch {url} due to {resp.reason}')
+                    return
+
                 cls._xmllib[rrid] = resp.content
                 if i > 0 and not i % 500:
                     with open(cls.resolver_xml_filepath, 'wb') as f:
@@ -799,6 +804,7 @@ class Curation(RRIDAnno):
         if self.isAstNode and self.rrid:
             if self._xml is None:
                 return 'XML was not fetched no citation included.'
+
             pc = get_proper_citation(self._xml)
             if not pc.startswith('(') and ' ' in pc:
                 pc = f'({pc})'
