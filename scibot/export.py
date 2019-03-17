@@ -229,12 +229,15 @@ def main():
     import json
     DATE = date.today().strftime('%Y-%m-%d')
     with open('RRID-data-%s.json' % DATE, 'wt') as f:
-        f.write('[\n')
-        for i, d in enumerate(export_json_impl()):
-            s = json.dumps(d, sort_keys=True, indent=1)
+        f.write('[')
+        gen = export_json_impl()
+        s = json.dumps(next(gen), sort_keys=True, indent=1)
+        for d in gen:
             f.write(s)
             f.write(',\n')
-        f.write('{}')
+            s = json.dumps(d, sort_keys=True, indent=1)
+
+        f.write(s)
         f.write(']')
 
 if __name__ == '__main__':
