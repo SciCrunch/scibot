@@ -159,42 +159,58 @@ def export_impl():
     DATE = date.today().strftime('%Y-%m-%d')
     return output_rows, DATE
 
+
+class NormalizedAnno(HypothesisAnnotation):
+    @property
+    def tags(self):
+        tags = super().tags
+        out = []
+        for tag in tags:
+            if tag in bad_tags:
+                # scibot made a mistake early
+                # might be able to correct tags in bulk someday
+                out.append(tag.replace('RRID:', 'RRIDCUR:'))
+            else:
+                out.append(tag)
+
+        text = self.text
+        exact = self.exact
+        if text.startswith('RRID:'):
+            # catch cases where the RRID was put in text instead of in tags
+            if 'RRIDCUR:Missing' in out or 'RRIDCUR:Unrecognized' in out:
+                # trap for cases where there is more text after an RRID...
+                rtag = text.split(None, 1)[0]
+                if rtag not in out:
+                    out.append(rtag)
+                    print('TEXT ISSUE for %s at https://hyp.is/%s' % (self.user, self.id))
+
+        elif exact and exact.startswith('RRID:'):  # this needs to go second in case of RRIDCUR:Incorrect
+            if exact.startswith('RRID: '):  # deal with nospace first
+                rtag = exact.replace('RRID: ', 'RRID:')
+            else:
+                rtag = exact
+
+            rtag = rtag.split(None, 1)[0]  # trap more
+            if rtag not in out:
+                if self.user == 'scibot' and len(out) == 1 and tags[0].startswith('RRID:RRID:'):  # FIXME HACK
+                    out = [rtag]
+                else:
+                    # anything else we detect in the data doesn't need
+                    # to be corrected or used to fix tags
+                    pass
+
+        return out
+
+
 def export_json_impl():
+    from IPython import embed
     get_annos = Memoizer(memfile, username=username, api_token=api_token, group=group)
     annos = get_annos()
 
     # clean up bugs from old curation workflow
     for anno in annos:
-        if anno.tags:
-            new_tags = []
-            for tag in anno.tags:
-                if tag in bad_tags:
-                    new_tags.append(tag.replace('RRID:', 'RRIDCUR:'))  # scibot made a mistake early, might be able to correct tags in bulk someday
-                else:
-                    new_tags.append(tag)  # horribly inefficient...
-            anno.tags = new_tags
-
-        if anno.text.startswith('RRID:'):  # catch cases where the RRID was put in text instead of in tags
-            if 'RRIDCUR:Missing' in anno.tags or 'RRIDCUR:Unrecognized' in anno.tags:
-                rtag = anno.text.split(None,1)[0]  # trap for cases where there is more text after an RRID...
-                if rtag not in anno.tags:
-                    anno.tags.append(rtag)
-                    print('TEXT ISSUE for %s at https://hyp.is/%s' % (anno.user, anno.id))
-        elif anno.exact and anno.exact.startswith('RRID:'):  # this needs to go second in case of RRIDCUR:Incorrect
-            if anno.exact.startswith('RRID: '):  # deal with nospace first
-                rtag = anno.exact.replace('RRID: ', 'RRID:')
-            else:
-                rtag = anno.exact
-            rtag = rtag.split(None,1)[0]  # trap more
-            if rtag not in anno.tags:
-                if anno.user == 'scibot' and len(anno.tags) == 1 and anno.tags[0].startswith('RRID:RRID:'):  # FIXME HACK
-                    anno.tags = [rtag]
-                else:
-                    pass  # anything else we detect in the data doesn't need to be corrected or used to fix tags
-
-    output_json = [anno.__dict__ for anno in annos]
-    DATE = date.today().strftime('%Y-%m-%d')
-    return output_json, DATE
+        yield NormalizedAnno(anno)._normalized()
+        continue
 
 ### URG
 
@@ -211,9 +227,15 @@ def oldmain():
 
 def main():
     import json
-    output_json, DATE = export_json_impl()
+    DATE = date.today().strftime('%Y-%m-%d')
     with open('RRID-data-%s.json' % DATE, 'wt') as f:
-        json.dump(output_json, f, sort_keys=True, indent=4)
+        f.write('[\n')
+        for i, d in enumerate(export_json_impl()):
+            s = json.dumps(d, sort_keys=True, indent=1)
+            f.write(s)
+            f.write(',\n')
+        f.write('{}')
+        f.write(']')
 
 if __name__ == '__main__':
     main()
