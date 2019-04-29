@@ -5,7 +5,7 @@ from IPython import embed
 from pyontutils.core import makeGraph, OntId
 import pyontutils.graphml_to_ttl as gt
 from pyontutils import combinators as cmb
-from pyontutils.utils import working_dir, TermColors as tc
+from pyontutils.utils import TermColors as tc
 from pyontutils.namespaces import OntCuries
 from pyontutils.graphml_to_ttl import workflow as wf, RRIDCUR
 from pyontutils.closed_namespaces import rdf, rdfs, owl
@@ -616,17 +616,17 @@ def parse_workflow():
                  if not isinstance(a_given_tag, BNode)
                          and not [successor_tag
                           for htt in has_tag_types
-                          for successor_tag in chain(t
-                                                     for t in cgraph[a_given_tag:htt]
-                                                     #if not isinstance(t, BNode)
-                                        ,
-                                                     # we don't actually need this for terminals
-                                                     # we will need it later
-                                                     #(t for b in cgraph[a_given_tag:htt]
-                                                     #if isinstance(b, BNode)
-                                                     #for listhead in cgraph[b:owl.oneOf]
-                                                     #for t in unlist(listhead, cgraph)),
-                         )])
+                          for successor_tag in
+                                  chain((t for t in cgraph[a_given_tag:htt]
+                                         #if not isinstance(t, BNode)
+                                        #,
+                                         # we don't actually need this for terminals
+                                         # we will need it later
+                                         #(t for b in cgraph[a_given_tag:htt]
+                                         #if isinstance(b, BNode)
+                                         #for listhead in cgraph[b:owl.oneOf]
+                                         #for t in unlist(listhead, cgraph)),
+                         ))])
 
     def topList(node, g):
         for s in g[:rdf.rest:node]:

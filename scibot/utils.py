@@ -233,3 +233,47 @@ def disambiguate_uris(uris):
     dd = defaultdict(set)
     _ = [dd[uri_normalization(uri)].add(uri) for uri in uris if uri not in bad_uris]
     return dict(dd)
+
+
+class mproperty:
+    def __init__(self, fget=None, fset=None, fdel=None, doc=None):
+        if doc is None and fget is not None and hasattr(fget, "__doc__"):
+            doc = fget.__doc__
+        self.__get = fget
+        self.__set = fset
+        self.__del = fdel
+        self.__doc__ = doc
+        if fget is not None:
+            self._attr_name = '___' + fget.__name__
+    
+    def __get__(self, inst, type=None):
+        if inst is None:
+            return self
+        if self.__get is None:
+            raise AttributeError('unreadable attribute')
+        
+        if not hasattr(inst, self._attr_name):
+            result = self.__get(inst)
+            setattr(inst, self._attr_name, result)
+        return getattr(inst, self._attr_name)
+    
+    def __set__(self, inst, value):
+        if self.__set is None:
+            raise AttributeError('can\'t set attribute')
+        delattr(inst, self._attr_name)
+        return self.__set(inst, value)
+
+    def __delete__(self, inst):
+        if self.__del is None:
+            raise AttributeError('can\'t delete attribute')
+        delattr(inst, self._attr_name)
+        return self.__del(inst)
+
+def mproperty_set(inst, func_name, value):
+    if isinstance(func_name, basestring):
+        property_name = '___' + func_name
+    elif hasattr(func_name, '__name__'):
+        property_name = '___' + func_name.func_name
+    else:
+        raise
+    setattr(inst, property_name, value)
