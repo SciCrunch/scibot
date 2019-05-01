@@ -8,8 +8,8 @@ from scibot.config import api_token, username, group, group_staging, memfile, pm
 from scibot.release import Curation, PublicAnno
 from scibot.export import bad_tags
 from pyontutils.utils import anyMembers, noneMembers
-from pyontutils.htmlfun import render_table, htmldoc, atag, divtag
-from pyontutils.htmlfun import table_style, navbar_style, cur_style
+from htmlfn import render_table, htmldoc, atag, divtag
+from htmlfn import table_style, navbar_style, cur_style
  
 from hyputils.subscribe import preFilter, AnnotationStream
 from hyputils.handlers import helperSyncHandler, filterHandler
