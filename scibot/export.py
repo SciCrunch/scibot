@@ -203,7 +203,6 @@ class NormalizedAnno(HypothesisAnnotation):
 
 
 def export_json_impl():
-    from IPython import embed
     get_annos = Memoizer(memfile, username=username, api_token=api_token, group=group)
     annos = get_annos()
 
