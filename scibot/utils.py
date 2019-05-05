@@ -6,6 +6,9 @@ from hyputils.memex.util.uri import normalize as uri_normalize
 from pyontutils.utils import Async, deferred, chunk_list, anyMembers, noneMembers
 from IPython import embed
 
+class ResolutionError(Exception):
+    """ something messed up """
+
 
 def DOI(doi):
     return 'https://doi.org/' + doi
@@ -75,7 +78,7 @@ def resolution_chain(iri):
             break
 
     if head.status_code >= 400:
-        raise LoadError(f'Nothing found at {self.name}\n')
+        raise ResolutionError(f'Nothing found at {head.url}\n')
 
 
 bad_uris = ('/articles/6-124/v2',  # FIXME don't hardcode this >_<
