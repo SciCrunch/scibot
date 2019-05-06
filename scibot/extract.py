@@ -72,7 +72,7 @@ def searchSoup(soup):
 
 
 def normalizeDoi(doi):
-    if 'http' in doi:
+    if 'http' in doi or 'doi.org' in doi:
         doi = '10.' + doi.split('.org/10.', 1)[-1]
     elif doi.startswith('doi:'):
         doi = doi.strip('doi:')
@@ -202,6 +202,7 @@ def find_rrids(text):
 
 def process_POST_request(request):
     dict_ = dict(request.form)
+    print(dict_)
     def htmlify(thing):
         try:
             html = dict_[thing][0]
