@@ -72,6 +72,7 @@ def searchSoup(soup):
 
 
 def normalizeDoi(doi):
+    doi = doi.replace(' ', '')
     if 'http' in doi or 'doi.org' in doi:
         doi = '10.' + doi.split('.org/10.', 1)[-1]
     elif doi.startswith('doi:'):
