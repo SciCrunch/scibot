@@ -22,7 +22,7 @@ from curio.channel import AuthenticationError
 from flask import Flask, request, abort
 from hyputils.hypothesis import HypothesisUtils
 from scibot.config import source_log_location
-from scibot.utils import makeSimpleLogger
+from scibot.utils import log
 from scibot.export import export_impl, export_json_impl
 
 try:
@@ -33,7 +33,6 @@ except ImportError:
 
 from IPython import embed
 
-log = makeSimpleLogger('scibot.submit')
 
 # logging
 

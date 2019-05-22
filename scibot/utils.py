@@ -1,10 +1,12 @@
 #!/usr/bin/env python3.6
 
-import logging
 import requests
 from hyputils.memex.util.uri import normalize as uri_normalize
-from pyontutils.utils import Async, deferred, chunk_list, anyMembers, noneMembers
+from pyontutils.utils import Async, deferred, chunk_list, anyMembers, noneMembers, makeSimpleLogger
 from IPython import embed
+
+log = makeSimpleLogger('scibot')
+
 
 class ResolutionError(Exception):
     """ something messed up """
@@ -25,17 +27,6 @@ def get_pmid_from_url(url):
         # TODO validate the suffix
         _, suffix = url.rsplit('/', 1)
         return 'PMID:' + suffix
-
-
-def makeSimpleLogger(name):
-    # TODO use extra ...
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler()  # FileHander goes to disk
-    formatter = logging.Formatter('[%(asctime)s] - %(levelname)s - %(name)s - %(message)s')  # TODO file and lineno ...
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-    return logger
 
 
 def zap_deleted(get_annos):
