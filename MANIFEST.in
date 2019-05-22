@@ -1,0 +1,7 @@
+recursive-include test *
+exclude .gitignore
+exclude .travis.yml
+exclude MANIFEST.in
+recursive-exclude * *.pyc
+recursive-exclude * *.swp
+recursive-exclude * *.swo

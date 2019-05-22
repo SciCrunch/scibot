@@ -10,7 +10,7 @@ def find_version(filename):
             return version_match.group(1)
 
 
-__version__ = find_version('ontquery/__init__.py')
+__version__ = find_version('scibot/__init__.py')
 
 with open('README.md', 'rt') as f:
     long_description = f.read()
