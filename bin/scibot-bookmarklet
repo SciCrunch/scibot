@@ -1,2 +1,11 @@
 #!/usr/bin/env sh
-gunicorn -b unix:/run/scibot-bookmarklet/socket --pid /run/scibot-bookmarklet/pid -n scibot-bookmarklet -w 4 -k gevent -t 600 --preload --log-level debug scibot.bookmarklet_server:app
+gunicorn -b unix:/run/scibot-bookmarklet/socket \
+         --pid /run/scibot-bookmarklet/pid \
+         -n scibot-bookmarklet \
+         -w 4 \
+         -k gevent \
+         -t 600 \
+         --preload \
+         --capture-output \
+         --log-level debug \
+         scibot.bookmarklet_server:app
