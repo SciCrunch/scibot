@@ -133,7 +133,8 @@ def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker,
 
 
 def rrid_POST(request, h, logloc, URL_LOCK):
-    target_uri, doi, pmid_from_source, head, body, text, cleaned_text = process_POST_request(request)
+    (target_uri, doi, pmid_from_source,
+     head, body, text, cleaned_text) = process_POST_request(request)
     running = URL_LOCK.start_uri(target_uri)
     print(target_uri)
     if running:

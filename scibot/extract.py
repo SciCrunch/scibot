@@ -1,5 +1,9 @@
 import re
 from bs4 import BeautifulSoup
+from scibot.utils import makeSimpleLogger
+
+log = makeSimpleLogger('extract')
+
 
 # utility
 def col0(pairs): return list(zip(*pairs))[0]
@@ -115,7 +119,7 @@ def getUri(uri, *soups):
             cu = searchSoup(soup)(*args)
             if cu is not None and cu.startswith('http'):
                 if cu != uri:
-                    print('canonical and uri do not match, preferring canonical', cu, uri)
+                    log.warning('canonical and uri do not match, preferring canonical', cu, uri)
                 return cu
     return uri
 
