@@ -35,6 +35,7 @@ setup(name='scibot',
       packages=['scibot'],
       tests_require=tests_require,
       install_requires=[
+          'beautifulsoup',
           'curio',
           'docopt',
           'flask',
