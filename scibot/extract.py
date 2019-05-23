@@ -207,18 +207,17 @@ def find_rrids(text):
 
 def process_POST_request(request):
     dict_ = dict(request.form)
-    print(dict_)
     def htmlify(thing):
         try:
-            html = dict_[thing][0]
+            html = dict_[thing]
         except KeyError as e:
             html = ''
         return '<html>' + html + '</html>'
-    uri = dict_['uri'][0]
+    uri = dict_['uri']
     head = htmlify('head')
     body = htmlify('body')
     try:
-        text = dict_['data'][0]
+        text = dict_['data']
     except KeyError as e:
         text = ''
 
