@@ -1,15 +1,16 @@
 [Unit]
 Description=scibot bookmarket gunicorn daemon
 Requires=scibot-bookmarklet.socket
+Wants=scibot-bookmarklet-sync.service
 After=network.target
 
 [Service]
 PIDFile=/run/scibot-bookemarklet/pid
-User={scibot-user}
-Group={scibot-user}
+User=scibot
+Group=scibot
 RuntimeDirectory=scibot-bookmarklet
-WorkingDirectory=/home/{scibot-user}/run
-ExecStart=/home/{scibot-user}/.local/bin/pipenv run scibot-bookmarklet
+WorkingDirectory=/var/lib/scibot/run
+ExecStart=/var/lib/scibot/.local/bin/pipenv run scibot-bookmarklet
 ExecReload=/bin/kill -s HUP $MAINPID
 ExecStop=/bin/kill -s TERM $MAINPID
 PrivateTmp=true
