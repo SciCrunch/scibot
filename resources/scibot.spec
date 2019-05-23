@@ -52,7 +52,7 @@ fi
 %install
 install -p -D -m 644 %{SOURCE1} %{buildroot}/%{_unitdir}/scibot-bookmarklet.socket
 install -p -D -m 644 %{SOURCE2} %{buildroot}/%{_unitdir}/scibot-bookmarklet.service
-install -p -D -m 644 %{SOURCE2} %{buildroot}/%{_unitdir}/scibot-bookmarklet-sync.service
+install -p -D -m 644 %{SOURCE3} %{buildroot}/%{_unitdir}/scibot-bookmarklet-sync.service
 #%py3_install
 
 %pre
