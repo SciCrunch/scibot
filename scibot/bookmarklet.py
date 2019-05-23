@@ -37,8 +37,8 @@ from IPython import embed
 # logging
 
 def write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h):
-    print('DOI:%s' % doi)
-    print(pmid)
+    log.info('DOI:{doi}')
+    log.info(pmid)
 
 
 def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
@@ -125,7 +125,7 @@ def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker,
                                    resolver: Resolver, submitter: Submitter) -> Processor:
     def inner(text: str) -> Generator:
         for found in finder(text):
-            print(found)
+            log.info(found)
             if notSubmittedCheck(found):
                 resolved = resolver(found)
                 yield submitter(found, resolved)
@@ -136,9 +136,9 @@ def rrid_POST(request, h, logloc, URL_LOCK):
     (target_uri, doi, pmid_from_source,
      head, body, text, cleaned_text) = process_POST_request(request)
     running = URL_LOCK.start_uri(target_uri)
-    print(target_uri)
+    log.info(target_uri)
     if running:
-        print('################# EARLY EXIT')
+        log.info('################# EARLY EXIT')
         return 'URI Already running ' + target_uri
 
     tags, unresolved_exacts = existing_tags(target_uri, h)

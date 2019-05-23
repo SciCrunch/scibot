@@ -119,7 +119,8 @@ def getUri(uri, *soups):
             cu = searchSoup(soup)(*args)
             if cu is not None and cu.startswith('http'):
                 if cu != uri:
-                    log.warning('canonical and uri do not match, preferring canonical', cu, uri)
+                    log.warning('canonical and uri do not match, '
+                                f'preferring canonical\n{cu}\n{uri}')
                 return cu
     return uri
 
@@ -295,21 +296,21 @@ class PaperId:
             paper = self
             doi = paper['DOI']
             pmid = paper['PMID']
-            print(url)
+            log.info(url)
             if not self.doi and self.uri.startswith('http'):  # we've go some weird ones in there...
                 doi = scrapeDoi(uri)
                 # scrapeIds(uri)
                 if doi is not None:
-                    print(doi)
+                    log.info(doi)
                     pmid = get_pmid(doi)
-                    print('WARNING json malformed in get_pmid')
-                    print(pmid)
+                    log.warning('json malformed in get_pmid')
+                    log.info(pmid)
                     resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_curation, [])
-                    print('new doi')
+                    log.info('new doi')
                     return resp
             else:
-                print(doi)
-                print('already found')
+                log.info(doi)
+                log.info('already found')
 
     def scrapeDoi(self):
         env = os.environ.copy()
@@ -320,10 +321,10 @@ class PaperId:
                              env=env)
         out, err = p.communicate()
         if p.returncode:
-            print('UTOH')
+            log.critical('UTOH')
             return None
         elif b'ERROR:headless_shell.cc' in out:
-            print(out)
+            log.critical(out)
             raise IOError('Something is wrong...')
         qurl = quote(url, '')
         if len(qurl) > 200:

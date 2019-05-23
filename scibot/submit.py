@@ -40,7 +40,12 @@ def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
         if root.findall('error'):
             s = 'Resolver lookup failed.'
             s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + ['RRIDCUR:Unresolved'])
+            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
+                                                                      prefix=prefix,
+                                                                      exact=exact_for_hypothesis,
+                                                                      suffix=suffix,
+                                                                      text=s,
+                                                                      tags=new_tags + ['RRIDCUR:Unresolved'])
             print('ERROR, rrid unresolved')
         else:
             s = ''
@@ -57,7 +62,12 @@ def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
                         continue  # nif-0000-30467 fix keep those pubmed links short!
                 s += '<p>%s: %s</p>' % (name, value)
             s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
-            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri, prefix=prefix, exact=exact_for_hypothesis, suffix=suffix, text=s, tags=new_tags + [exact])
+            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
+                                                                      prefix=prefix,
+                                                                      exact=exact_for_hypothesis,
+                                                                      suffix=suffix,
+                                                                      text=s,
+                                                                      tags=new_tags + [exact])  # FIXME exact vs exact_for_hypothesis vs canonical rrid
     elif status_code >= 500:
         s = 'Resolver lookup failed due to server error.'
         s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri

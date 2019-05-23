@@ -1,5 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
+from scibot.utils import log
 try:
     from urllib.parse import urlencode, quote
 except ImportError:
@@ -46,11 +47,11 @@ def get_pmid(doi):  # TODO
         if '\n' in pmid:  # in the event that we get multiple PMIDs it means something is wrong
             pmid = None
         if pmid:
-            print('got pmid from pubmed:', pmid)
+            log.info('got pmid from pubmed: {pmid}')
             return 'PMID:' + pmid
     params={'idtype':'auto', 'format':'json', 'Ids':doi, 'convert-button':'Convert'}
     pj = requests.post('https://www.ncbi.nlm.nih.gov/pmc/pmctopmid/', params=params).json()
-    print(pj)
+    log.debug(pj)
     for rec in pj['records']:
         try:
             return 'PMID:' + rec['pmid']
