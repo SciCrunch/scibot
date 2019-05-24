@@ -1,4 +1,5 @@
 import re
+import requests
 from bs4 import BeautifulSoup
 from scibot.utils import makeSimpleLogger
 
@@ -135,6 +136,115 @@ def getPmid(*soups):
             if cu is not None:
                 return cu  # FIXME TODO yeild here
 
+
+def getTitle(*soups):
+    for soup in soups:
+        for t in soup.find_all('title'):
+            yield t.text
+
+
+def chooseTitle(document, titles):
+    meta_titles = []
+    for k, d_ in document.items():
+        rank = 0  # TODO
+        if 'title' in d_:
+            t = d_['title'][0]  # FIXME warn on > 1 ?
+            meta_titles.append((rank, t))
+
+    if meta_titles:
+        title = sorted(meta_titles)[0][1]
+
+    elif titles:
+        title = sorted(titles, key=lambda t: -len(t))[0]
+
+    else:
+        log.warning(f'no title for {document}')
+        title = 'Spooky nameless page'
+
+    document['title'] = title
+
+
+def getLinks(*soups):
+    for soup in soups:
+        for l in soup.find_all('link'):
+            yield l.attrs
+
+
+def chooseLinks(document, links):
+    meta_links = []
+    for link in links:
+        if 'rel' in link and 'canonical' in link['rel']:
+            l = {'rel': 'canonical', 'href': link['href']}
+            if 'type' in link and link['type']:
+                l['type'] = link['type']
+
+            meta_links.append(l)
+
+    # TODO pull out other links as well
+    document['link'] = meta_links
+
+
+def searchSoups(argslist, *soups):
+     for soup in soups:
+        for args in argslist:
+            cu = searchSoup(soup)(*args)
+            if cu is not None:
+                yield cu
+
+
+def getDocument(*soups):
+    # TODO probably want to detect when there are tags in the header that
+    # we are missing/skipping since this takes a closed world approach to detection
+    # rather than prefix based detection
+    # TODO pull these out into a more visible file
+    dc_fields = 'identifier', 'title', 'publisher', 'format', 'creator', 'date'
+    eprints_fields = ('title', 'creators_name', 'type', 'datestamp', 'ispublished',
+                      'date', 'date_type', 'publication', 'volume', 'pagerange')
+    prism_fields = ('volume', 'number', 'startingPage', 'endingPage', 'publicationName',
+                    'issn', 'publicationDate', 'doi')
+    highwire_fields = ('title', 'journal_title', 'publisher', 'issue', 'volume', 'doi',
+                       'firstpage', 'lastpage', 'date', 'abstract_html_url', 'fulltext_html_url',
+                       'pdf_url', 'pii', 'article_type', 'online_date', 'publication_date',
+                       'issn', 'keywords', 'language', 'author', 'author_institution', 
+    )
+    og_fields = ('title', 'type', 'image', 'url', 'audio', 'description', 'determiner',
+                 'locale', 'locale:alternate', 'site_name', 'video')
+
+    def dmeta(rexp, fields, props=('name',)):
+        return {field: [('meta', prop, re.compile(rexp.format(field=field), re.I), 'content')
+                        for prop in props] for field in fields}
+
+    todo = {
+        'dc': dmeta('^(dc|dcterms).{field}$', dc_fields),
+        'eprints': dmeta('^eprints.{field}$', eprints_fields),
+        'facebook': dmeta('^og:{field}$', og_fields, props=('name', 'property')),
+        # some people use name for og instead of property (spec expects property)
+        'highwire': dmeta('^citation_{field}$', highwire_fields),
+        'prism': dmeta('^prism.{field}$', prism_fields),
+        'twitter':{},  # TODO??
+    }
+
+    document = {key: {field: results
+                      for field, argslist in dict_.items()
+                      for results in (list(searchSoups(argslist, *soups)),)
+                      if results}
+                for key, dict_ in todo.items()}
+
+    doi = getDoi(*soups)
+    pmid = getPmid(*soups)
+    titles =  getTitle(*soups)
+    chooseTitle(document, titles)
+    links = getLinks(*soups)
+    chooseLinks(document, links)
+    return document, doi, pmid
+
+
+def document_from_url(url):
+    resp = requests.get(url)
+    soup = BeautifulSoup(resp.content, 'lxml')
+    return getDocument(soup), soup
+
+
 # rrids
 
 def clean_text(text):
@@ -226,10 +336,11 @@ def process_POST_request(request):
     bodysoup = BeautifulSoup(body, 'lxml')
 
     target_uri = getUri(uri, headsoup, bodysoup)
-    doi = getDoi(headsoup, bodysoup)
-    pmid = getPmid(headsoup, bodysoup)
+    #doi = getDoi(headsoup, bodysoup)
+    #pmid = getPmid(headsoup, bodysoup)
+    document, doi, pmid = getDocument(headsoup, bodysoup)
     cleaned_text = clean_text(text)
-    return target_uri, doi, pmid, head, body, text, cleaned_text
+    return target_uri, document, doi, pmid, head, body, text, cleaned_text
 
 class PaperId:
     id_types = (

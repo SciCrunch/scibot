@@ -20,6 +20,12 @@ def PMID(pmid):
     return pmid.replace('PMID:', 'https://www.ncbi.nlm.nih.gov/pubmed/')
 
 
+def rrid_from_citation(citation):
+    _, suffix_stuff = citation.split('RRID:')
+    suffix = suffix_stuff.rstrip(')')
+    return 'RRID:' + suffix
+
+
 def get_pmid_from_url(url):
     if anyMembers(url,
                   'www.ncbi.nlm.nih.gov/pubmed/',

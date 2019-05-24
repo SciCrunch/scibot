@@ -1,8 +1,8 @@
 from lxml import etree
-from scibot.utils import DOI, PMID
+from scibot.utils import DOI, PMID, rrid_from_citation, log
 
 
-def annotate_doi_pmid(target_uri, doi, pmid, h, tags, extra_text=None):  # TODO
+def annotate_doi_pmid(target_uri, document, doi, pmid, h, tags, extra_text=None):  # TODO
     # need to check for existing ...
     text_list = []
     tags_to_add = []
@@ -17,23 +17,37 @@ def annotate_doi_pmid(target_uri, doi, pmid, h, tags, extra_text=None):  # TODO
         text_list.append(PMID(pmid))
         tags_to_add.append(pmid)
     if tags_to_add:
-        r = h.create_annotation_with_target_using_only_text_quote(target_uri,
+        r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
+                                                                  document=document,
                                                                   text='\n'.join(text_list),
                                                                   tags=tags_to_add)
-        print(r)
-        print(r.text)
+        log.info(r)
+        log.info(r.text)
         return r
 
 
-def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
+def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing, existing_with_suffixes):
     prefix, exact, exact_for_hypothesis, suffix = found
     xml, status_code, resolver_uri = resolved
 
-    new_tags = []
-    if exact in existing:
-        new_tags.append('RRIDCUR:Duplicate')
+    if exact.startswith('RRID:'):
+        tail = exact[len('RRID:'):]
     else:
+        tail = exact
+
+    duplicate = exact in existing
+    suffix_match = (tail, suffix) in existing_with_suffixes  # FIXME prefix tree for fuzzier matches
+    new_tags = []
+    if duplicate:
+        new_tags.append('RRIDCUR:Duplicate')
+    elif suffix_match:
+        log.info(f'suffix matches, skipping entirely, {tail} {suffix}')
+        return
+    else:
+        # note that we use the normalized exact here to detect
+        # duplicates but provide the canonical RRID: as the tag
         existing.append(exact)
+        existing_with_suffixes.append((tail, suffix))
 
     if status_code < 300:
         root = etree.fromstring(xml)
@@ -41,12 +55,25 @@ def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
             s = 'Resolver lookup failed.'
             s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
             r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
+                                                                      document=document,
                                                                       prefix=prefix,
                                                                       exact=exact_for_hypothesis,
                                                                       suffix=suffix,
                                                                       text=s,
                                                                       tags=new_tags + ['RRIDCUR:Unresolved'])
-            print('ERROR, rrid unresolved')
+            log.error(f'rrid unresolved {exact}')
+
+        elif duplicate:
+            # just mark the duplicate so that it will anchor in the client
+            # but don't add the RRID: tag and don't include the resolver metadata
+            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
+                                                                      document=document,
+                                                                      prefix=prefix,
+                                                                      exact=exact_for_hypothesis,
+                                                                      suffix=suffix,
+                                                                      text='',
+                                                                      tags=new_tags)
+
         else:
             s = ''
             title = root.findall('title')[0].text
@@ -54,20 +81,26 @@ def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
             data_elements = root.findall('data')[0]
             data_elements = [(e.find('name').text, e.find('value').text) for e in data_elements]  # these shouldn't duplicate
             citation = [(n, v) for n, v in  data_elements if n == 'Proper Citation']
+            rrid = [rrid_from_citation(c) for _, c in citation] if citation else [exact]
             name = [(n, v) for n, v in  data_elements if n == 'Name']
-            data_elements = citation + name + sorted([(n, v) for n, v in  data_elements if (n != 'Proper Citation' or n != 'Name') and v is not None])
+            data_elements = citation + name + sorted([(n, v) for n, v in 
+                                                      data_elements if (n != 'Proper Citation' or
+                                                                        n != 'Name') and v is not None])
             for name, value in data_elements:
-                if (name == 'Reference' or name == 'Mentioned In Literature') and value is not None and value.startswith('<a class'):
+                if ((name == 'Reference' or name == 'Mentioned In Literature')
+                    and value is not None and value.startswith('<a class')):
                     if len(value) > 500:
                         continue  # nif-0000-30467 fix keep those pubmed links short!
                 s += '<p>%s: %s</p>' % (name, value)
             s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
             r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
+                                                                      document=document,
                                                                       prefix=prefix,
                                                                       exact=exact_for_hypothesis,
                                                                       suffix=suffix,
                                                                       text=s,
-                                                                      tags=new_tags + [exact])  # FIXME exact vs exact_for_hypothesis vs canonical rrid
+                                                                      tags=new_tags + rrid)
+
     elif status_code >= 500:
         s = 'Resolver lookup failed due to server error.'
         s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
@@ -75,6 +108,7 @@ def submit_to_h(target_uri, found, resolved, h, found_rrids, existing):
         s = 'Resolver lookup failed.'
         s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
         r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
+                                                                  document=document,
                                                                   prefix=prefix,
                                                                   exact=exact_for_hypothesis,
                                                                   suffix=suffix,

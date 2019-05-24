@@ -47,7 +47,7 @@ def get_pmid(doi):  # TODO
         if '\n' in pmid:  # in the event that we get multiple PMIDs it means something is wrong
             pmid = None
         if pmid:
-            log.info('got pmid from pubmed: {pmid}')
+            log.info(f'got pmid from pubmed: {pmid}')
             return 'PMID:' + pmid
     params={'idtype':'auto', 'format':'json', 'Ids':doi, 'convert-button':'Convert'}
     pj = requests.post('https://www.ncbi.nlm.nih.gov/pmc/pmctopmid/', params=params).json()

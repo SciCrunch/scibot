@@ -36,12 +36,12 @@ from IPython import embed
 
 # logging
 
-def write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h):
-    log.info('DOI:{doi}')
+def write_stdout(target_uri, document, doi, pmid, found_rrids, head, body, text, h):
+    log.info(f'DOI:{doi}')
     log.info(pmid)
 
 
-def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
+def write_log(target_uri, document, doi, pmid, found_rrids, head, body, text, h):
     now = datetime.now().isoformat()[0:19].replace(':','').replace('-','')
     frv = list(set(found_rrids.values()))
     if len(frv) == 1 and frv[0] == 'Already Annotated':
@@ -55,6 +55,7 @@ def write_log(target_uri, doi, pmid, found_rrids, head, body, text, h):
            'head':head,
            'body':body,
            'text':text,
+           'document': document,
           }
     fname = Path(source_log_location, f'rrid-{now}.json')
     with open(fname.as_posix(), 'wt') as f:
@@ -132,17 +133,8 @@ def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker,
     return inner
 
 
-def rrid_POST(request, h, logloc, URL_LOCK):
-    (target_uri, doi, pmid_from_source,
-     head, body, text, cleaned_text) = process_POST_request(request)
-    running = URL_LOCK.start_uri(target_uri)
-    log.info(target_uri)
-    if running:
-        log.info('################# EARLY EXIT')
-        return 'URI Already running ' + target_uri
-
-    tags, unresolved_exacts = existing_tags(target_uri, h)
-
+def pmid_logic(doi, pmid_from_source, target_uri=None, document=None, h=None, tags=None):
+    # TODO move the annotation of errors out of this
     if doi:
         pmid_from_doi = get_pmid(doi)
     else:
@@ -154,8 +146,8 @@ def rrid_POST(request, h, logloc, URL_LOCK):
         else:
             # TODO responses -> db
             # TODO tag for marking errors explicitly without the dashboard?
-            r1 = annotate_doi_pmid(target_uri, None, pmid_from_doi, h, tags, 'ERROR\nPMID from DOI')
-            r2 = annotate_doi_pmid(target_uri, None, pmid_from_source, h, tags, 'ERROR\nPMID from source')
+            r1 = annotate_doi_pmid(target_uri, document, None, pmid_from_doi, h, tags, 'ERROR\nPMID from DOI')
+            r2 = annotate_doi_pmid(target_uri, document, None, pmid_from_source, h, tags, 'ERROR\nPMID from source')
             pmid = None
     elif pmid_from_source:
         pmid = pmid_from_source
@@ -164,32 +156,65 @@ def rrid_POST(request, h, logloc, URL_LOCK):
     else:
         pmid = None
 
-    r = annotate_doi_pmid(target_uri, doi, pmid, h, tags)  # todo r -> db with responses
+    return pmid
 
-    found_rrids = {}
-    existing = []
 
-    def checker(found):
-        prefix, exact, exact_for_hypothesis, suffix = found
-        return not check_already_submitted(exact, exact_for_hypothesis,
-                                           found_rrids, tags, unresolved_exacts)
+def rrid_POST(request, h, logloc, URL_LOCK):
+    (target_uri, document, doi, pmid_from_source,
+     head, body, text, cleaned_text) = process_POST_request(request)
+    running = URL_LOCK.start_uri(target_uri)
+    log.info(target_uri)
+    if running:
+        log.info('################# EARLY EXIT')
+        return 'URI Already running ' + target_uri
 
-    def resolver(found):
-        prefix, exact, exact_for_hypothesis, suffix = found
-        return rrid_resolver_xml(exact, found_rrids)
+    try:
+        tags, unresolved_exacts = existing_tags(target_uri, h)
+        pmid = pmid_logic(doi, pmid_from_source, target_uri, document, h, tags)
+        r = annotate_doi_pmid(target_uri, document, doi, pmid, h, tags)  # todo r -> db with responses
 
-    def submitter(found, resolved):
-        return submit_to_h(target_uri, found, resolved, h, found_rrids, existing)
+        # these values are defined up here as shared state that will be
+        # mutated across multiple calls to checker, resolver, and submitter
+        # this is a really bad design because it is not clear that processText
+        # actually does this ... once again, python is best if you just use the
+        # objects and give up any hope for an alternative approach, the way it
+        # is done here also makes the scope where these values could be used
+        # completely ambiguous and hard to understand/reason about
 
-    processText = make_find_check_resolve_submit(finder, checker, resolver, submitter)
+        found_rrids = {}
+        existing = []
+        existing_with_suffixes = []
 
-    responses = list(processText(cleaned_text))
+        def checker(found):
+            prefix, exact, exact_for_hypothesis, suffix = found
+            return not check_already_submitted(exact, exact_for_hypothesis,
+                                               found_rrids, tags, unresolved_exacts)
 
-    results = ', '.join(found_rrids.keys())
-    write_stdout(target_uri, doi, pmid, found_rrids, head, body, text, h)
-    write_log(target_uri, doi, pmid, found_rrids, head, body, text, h)
+        def resolver(found):
+            prefix, exact, exact_for_hypothesis, suffix = found
+            return rrid_resolver_xml(exact, found_rrids)
 
-    URL_LOCK.stop_uri(target_uri)
+        def submitter(found, resolved):
+            return submit_to_h(target_uri, document, found, resolved, h, found_rrids,
+                               existing, existing_with_suffixes)
+
+        processText = make_find_check_resolve_submit(finder, checker, resolver, submitter)
+
+        responses = list(processText(cleaned_text))  # this call runs everything
+
+        results = ', '.join(found_rrids.keys())
+        write_stdout(target_uri, document, doi, pmid, found_rrids, head, body, text, h)
+        write_log(target_uri, document, doi, pmid, found_rrids, head, body, text, h)
+
+    except BaseException as e:
+        # there are some other linger issues that are what was causing
+        # uris to get stuck as always running in sync
+        log.exception(e)
+        raise e
+
+    finally:
+        URL_LOCK.stop_uri(target_uri)
+
     return results, 200, {'Content-Type': 'text/plain',
                           'Access-Control-Allow-Origin':'*'}
 
@@ -209,9 +234,8 @@ def rrid_OPTIONS(request):
                      'Access-Control-Allow-Headers': response_headers}
 
 
-def rrid_wrapper(request, username, api_token, group, logloc, URL_LOCK):
+def rrid_wrapper(request, h, logloc, URL_LOCK):
     """ Receive an article, parse RRIDs, resolve them, create annotations, log results """
-    h = HypothesisUtils(username=username, token=api_token, group=group)
     if  request.method == 'OPTIONS':
         return rrid_OPTIONS(request)
     elif request.method == 'POST':
@@ -233,6 +257,9 @@ def main(local=False):
     _backup_sync_port = int(_sdefaults['--port'])
 
     app = Flask('scibot bookmarklet server')
+
+    h = HypothesisUtils(username=username, token=api_token, group=group)
+    h2 = HypothesisUtils(username=username, token=api_token, group=group2)
 
     if __name__ == '__main__':
         args = docopt(__doc__)
@@ -270,11 +297,11 @@ def main(local=False):
 
     @app.route('/rrid', methods=['POST', 'OPTIONS'])
     def rrid():
-        return rrid_wrapper(request, username, api_token, group, 'logs/rrid/', URL_LOCK)
+        return rrid_wrapper(request, h, 'logs/rrid/', URL_LOCK)
 
     @app.route('/validaterrid', methods=['POST', 'OPTIONS'])
     def validaterrid(request):
-        return rrid_wrapper(request, username, api_token, group2, 'logs/validaterrid/', URL_LOCK)
+        return rrid_wrapper(request, h2, 'logs/validaterrid/', URL_LOCK)
 
     @app.route('/bookmarklet', methods=['GET'])
     def bookmarklet():
