@@ -51,7 +51,18 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
 
     if status_code < 300:
         root = etree.fromstring(xml)
-        if root.findall('error'):
+        if duplicate:
+            # just mark the duplicate so that it will anchor in the client
+            # but don't add the RRID: tag and don't include the resolver metadata
+            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
+                                                                      document=document,
+                                                                      prefix=prefix,
+                                                                      exact=exact_for_hypothesis,
+                                                                      suffix=suffix,
+                                                                      text='',
+                                                                      tags=new_tags)
+
+        elif root.findall('error'):
             s = 'Resolver lookup failed.'
             s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
             r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
@@ -62,17 +73,6 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
                                                                       text=s,
                                                                       tags=new_tags + ['RRIDCUR:Unresolved'])
             log.error(f'rrid unresolved {exact}')
-
-        elif duplicate:
-            # just mark the duplicate so that it will anchor in the client
-            # but don't add the RRID: tag and don't include the resolver metadata
-            r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
-                                                                      document=document,
-                                                                      prefix=prefix,
-                                                                      exact=exact_for_hypothesis,
-                                                                      suffix=suffix,
-                                                                      text='',
-                                                                      tags=new_tags)
 
         else:
             s = ''
