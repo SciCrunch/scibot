@@ -1,0 +1,18 @@
+[Unit]
+Description=scibot bookmarket sync daemon
+After=network.target
+
+[Service]
+PIDFile=/run/scibot-bookemarklet/pid
+User=scibot
+Group=scibot
+RuntimeDirectory=scibot-bookmarklet
+WorkingDirectory=/var/lib/scibot/run
+ExecStart=/var/lib/scibot/.local/bin/pipenv run scibot-sync
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s TERM $MAINPID
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=scibot-bookmarklet.service
