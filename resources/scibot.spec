@@ -71,6 +71,7 @@ if [[ ! -d %{scibot_log} ]]; then
 fi
 
 %post
+systemd-tmpfiles --create
 systemctl enable scibot-bookmarklet
 systemctl enable scibot-bookmarklet-sync
 
