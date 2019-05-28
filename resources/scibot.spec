@@ -31,6 +31,7 @@ Source1: scibot-bookmarklet.socket
 Source2: scibot-bookmarklet.service
 Source3: scibot-bookmarklet-sync.service
 Source4: env.conf
+Source5: scibot-bookmarklet.conf
 
 %description
 curation workflow automation and coordination
@@ -56,6 +57,7 @@ install -p -D -m 644 %{SOURCE1} %{buildroot}/%{_unitdir}/scibot-bookmarklet.sock
 install -p -D -m 644 %{SOURCE2} %{buildroot}/%{_unitdir}/scibot-bookmarklet.service
 install -p -D -m 644 %{SOURCE3} %{buildroot}/%{_unitdir}/scibot-bookmarklet-sync.service
 install -p -D -m 600 %{SOURCE4} %{buildroot}/%{_etcdir}/scibot-bookmarklet.service.d/env.conf
+install -p -D -m 644 %{SOURCE5} %{buildroot}/etc/tmpfiles.d/scibot-bookmarklet.conf
 #%py3_install
 
 %pre
@@ -80,6 +82,7 @@ rm -rf %{buildroot}
 %{_unitdir}/scibot-bookmarklet.service
 %{_unitdir}/scibot-bookmarklet-sync.service
 %{_etcdir}/scibot-bookmarklet.service.d/env.conf
+/etc/tmpfiles.d/scibot-bookmarklet.conf
 
 %changelog
 # skip this for now
