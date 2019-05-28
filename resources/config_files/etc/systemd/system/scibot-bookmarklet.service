@@ -12,7 +12,6 @@ WorkingDirectory=/var/lib/scibot/scibot
 EnvironmentFile=/etc/systemd/system/scibot-bookmarklet.service.d/env.conf
 ExecStart=/var/lib/scibot/.local/bin/pipenv run gunicorn \
 --bind unix:/run/scibot-bookmarklet/socket \
---daemon \
 --name scibot-bookmarklet \
 --workers 4 \
 --worker-class gevent \

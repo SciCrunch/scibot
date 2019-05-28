@@ -22,6 +22,7 @@ BuildArch:  noarch
 BuildRequires: systemd
 BuildRequires: git
 Requires:   bash
+Requires:   nginx
 Requires:   python3
 Requires(post):    systemd
 Requires(preun):   systemd
