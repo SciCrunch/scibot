@@ -4,7 +4,7 @@ Requrires=scibot-bookmarklet-sync.service
 After=network.target
 
 [Service]
-PIDFile=/run/scibot-bookemarklet-sync/pid
+PIDFile=/run/scibot-bookemarklet/pid
 User=scibot
 Group=scibot
 RuntimeDirectory=scibot-bookmarklet

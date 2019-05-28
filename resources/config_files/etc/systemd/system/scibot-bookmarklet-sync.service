@@ -3,7 +3,7 @@ Description=scibot bookmarket sync daemon
 After=network.target
 
 [Service]
-PIDFile=/run/scibot-bookemarklet/pid
+PIDFile=/run/scibot-bookemarklet-sync/pid
 User=scibot
 Group=scibot
 RuntimeDirectory=scibot-bookmarklet
