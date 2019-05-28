@@ -9,6 +9,7 @@
 %define     scibot_group %{scibot_user}
 %define     scibot_home  %{_localstatedir}/lib/scibot
 %define     scibot_log   %{_localstatedir}/log/scibot
+%define     scibot_source_log   %{scibot_home}/logs
 
 %define     name scibot
 %define     version 9999
@@ -73,6 +74,10 @@ getent passwd %{scibot_user} > /dev/null || \
 if [[ ! -d %{scibot_log} ]]; then
 	mkdir %{scibot_log}  # owner?
 	chown %{scibot_user}:%{scibot_group} %{scibot_log}
+fi
+if [[ ! -d %{scibot_source_log} ]]; then
+	mkdir %{scibot_source_log}
+	chown %{scibot_user}:%{scibot_group} %{scibot_source_log}
 fi
 
 %post
