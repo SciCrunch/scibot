@@ -52,6 +52,13 @@ be able to run commands like `python scibot/export.py`.
 
 ## Setup on amazon
 
+Building the rpm
+```
+pushd resources/rpmbuild
+rpmbuild --nodeps --define "_topdir `pwd`" -ba SPECS/scibot.spec
+popd
+```
+
 0. ssh in to the host that will serve the script
 1. `sudo yum install gcc libxml2 libxml2-devel libxslt libxslt-devel python36 python36-devel python36-pip`
 2. `sudo alternatives --set python /usr/bin/python3.6`
