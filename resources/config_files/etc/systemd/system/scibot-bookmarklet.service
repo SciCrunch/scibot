@@ -1,6 +1,6 @@
 [Unit]
 Description=scibot bookmarket gunicorn daemon
-Requrires=scibot-bookmarklet-sync.service
+Requires=scibot-bookmarklet-sync.service
 After=network.target
 
 [Service]
