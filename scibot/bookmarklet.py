@@ -130,6 +130,7 @@ def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker,
             if notSubmittedCheck(found):
                 resolved = resolver(found)
                 yield submitter(found, resolved)
+
     return inner
 
 

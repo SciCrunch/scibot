@@ -181,7 +181,7 @@ def chooseLinks(document, links):
             meta_links.append(l)
 
     # TODO pull out other links as well
-    document['link'] = meta_links
+    document['link'].extend(meta_links)
 
 
 def searchSoups(argslist, *soups):
@@ -192,7 +192,7 @@ def searchSoups(argslist, *soups):
                 yield cu
 
 
-def getDocument(*soups):
+def getDocument(target_uri, *soups):
     # TODO probably want to detect when there are tags in the header that
     # we are missing/skipping since this takes a closed world approach to detection
     # rather than prefix based detection
@@ -232,9 +232,10 @@ def getDocument(*soups):
 
     doi = getDoi(*soups)
     pmid = getPmid(*soups)
-    titles =  getTitle(*soups)
+    titles =  list(getTitle(*soups))
     chooseTitle(document, titles)
-    links = getLinks(*soups)
+    links = list(getLinks(*soups))
+    document['link'] = [{'href': target_uri}]
     chooseLinks(document, links)
     return document, doi, pmid
 
@@ -242,7 +243,7 @@ def getDocument(*soups):
 def document_from_url(url):
     resp = requests.get(url)
     soup = BeautifulSoup(resp.content, 'lxml')
-    return getDocument(soup), soup
+    return getDocument(url, resp, soup), soup
 
 
 # rrids
@@ -338,9 +339,10 @@ def process_POST_request(request):
     target_uri = getUri(uri, headsoup, bodysoup)
     #doi = getDoi(headsoup, bodysoup)
     #pmid = getPmid(headsoup, bodysoup)
-    document, doi, pmid = getDocument(headsoup, bodysoup)
+    document, doi, pmid = getDocument(target_uri, headsoup, bodysoup)
     cleaned_text = clean_text(text)
     return target_uri, document, doi, pmid, head, body, text, cleaned_text
+
 
 class PaperId:
     id_types = (

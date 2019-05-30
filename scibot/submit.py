@@ -1,9 +1,16 @@
 from lxml import etree
 from scibot.utils import DOI, PMID, rrid_from_citation, log
 
+def make_extra(document, expanded_exact=None):
+    out = {'document': document,}
+    if expanded_exact:
+        out['expanded_exact'] = expanded_exact
+
+    return out
 
 def annotate_doi_pmid(target_uri, document, doi, pmid, h, tags, extra_text=None):  # TODO
     # need to check for existing ...
+    extra = make_extra(document)
     text_list = []
     tags_to_add = []
     if extra_text is not None:
@@ -20,7 +27,8 @@ def annotate_doi_pmid(target_uri, document, doi, pmid, h, tags, extra_text=None)
         r = h.create_annotation_with_target_using_only_text_quote(url=target_uri,
                                                                   document=document,
                                                                   text='\n'.join(text_list),
-                                                                  tags=tags_to_add)
+                                                                  tags=tags_to_add,
+                                                                  extra=extra,)
         log.info(r)
         log.info(r.text)
         return r
@@ -29,6 +37,7 @@ def annotate_doi_pmid(target_uri, document, doi, pmid, h, tags, extra_text=None)
 def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing, existing_with_suffixes):
     prefix, exact, exact_for_hypothesis, suffix = found
     xml, status_code, resolver_uri = resolved
+    extra = make_extra(document, exact)
 
     if exact.startswith('RRID:'):
         tail = exact[len('RRID:'):]
@@ -60,7 +69,8 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
                                                                       exact=exact_for_hypothesis,
                                                                       suffix=suffix,
                                                                       text='',
-                                                                      tags=new_tags)
+                                                                      tags=new_tags,
+                                                                      extra=extra,)
 
         elif root.findall('error'):
             s = 'Resolver lookup failed.'
@@ -71,7 +81,8 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
                                                                       exact=exact_for_hypothesis,
                                                                       suffix=suffix,
                                                                       text=s,
-                                                                      tags=new_tags + ['RRIDCUR:Unresolved'])
+                                                                      tags=new_tags + ['RRIDCUR:Unresolved'],
+                                                                      extra=extra,)
             log.error(f'rrid unresolved {exact}')
 
         else:
@@ -99,7 +110,8 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
                                                                       exact=exact_for_hypothesis,
                                                                       suffix=suffix,
                                                                       text=s,
-                                                                      tags=new_tags + rrid)
+                                                                      tags=new_tags + rrid,
+                                                                      extra=extra,)
 
     elif status_code >= 500:
         s = 'Resolver lookup failed due to server error.'
@@ -113,7 +125,8 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
                                                                   exact=exact_for_hypothesis,
                                                                   suffix=suffix,
                                                                   text=s,
-                                                                  tags=new_tags + ['RRIDCUR:Unresolved'])
+                                                                  tags=new_tags + ['RRIDCUR:Unresolved'],
+                                                                  extra=extra,)
     found_rrids[exact] = r.json()['links']['incontext']
     return r
 
