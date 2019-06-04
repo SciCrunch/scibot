@@ -69,9 +69,8 @@ for details on where to put the certs after scping them over.
 Install steps run as root or via sudo.
 ```bash
 amazon-linux-extras install nginx1.12
-yum install python3 python3-devel gcc
-pip3 install pipenv wheel
 yum install scibot-9999-0.noarch.rpm  # update with yum reinstall
+pip3 install pipenv wheel
 vim /etc/systemd/system/scibot-bookmarklet.service.d/env.conf  # set api keys etc
 ```
 
