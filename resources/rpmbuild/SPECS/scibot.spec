@@ -22,9 +22,11 @@ Url:        https://github.com/SciCrunch/scibot
 BuildArch:  noarch
 BuildRequires: systemd
 BuildRequires: git
+Requires:   gcc  # eventually this should be a build requires
 Requires:   bash
 Requires:   nginx
 Requires:   python3
+Requires:   python3-devel  # eventual build requires
 Requires(post):    systemd
 Requires(preun):   systemd
 Requires(postun):  systemd
