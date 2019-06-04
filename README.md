@@ -58,7 +58,40 @@ pushd resources/rpmbuild
 rpmbuild --nodeps --define "_topdir `pwd`" -ba SPECS/scibot.spec
 popd
 ```
+Once this is done scp the rpm to the host.
+Also scp the ssl certs over, or use letsencrypt to obtain a cert.
+If you are using using a cert from another registrar you may need to
+bundle your certs `cat my-cert.crt existing-bundle.crt > scicrunch.io.crt`
+(see https://gist.github.com/bradmontgomery/6487319 for details)
+See [nginx.conf](./resources/config_files/etc/nginx/scibot.conf)
+for details on where to put the certs after scping them over.
 
+Install steps run as root or via sudo.
+```bash
+amazon-linux-extras install nginx1.12
+yum install python3 python3-devel gcc
+pip3 install pipenv wheel
+yum install scibot-9999-0.noarch.rpm  # update with yum reinstall
+vim /etc/systemd/system/scibot-bookmarklet.service.d/env.conf  # set api keys etc
+```
+
+Install scibot codebase as the scibot user
+```bash
+git clone https://github.com/SciCrunch/scibot.git
+pushd scibot
+pipenv install
+```
+Hopefully this step will become simpler nce we start pushing releases.
+`pipenv install scibot` or alternately it may also be possible to package
+everything we need in the rpm and only install that. With none of the other
+steps needed at all.
+
+Start services as root
+```bash
+systemctl start nginx scibot-sync scibot-bookmarklet
+```
+
+Install steps 
 0. ssh in to the host that will serve the script
 1. `sudo yum install gcc libxml2 libxml2-devel libxslt libxslt-devel python36 python36-devel python36-pip`
 2. `sudo alternatives --set python /usr/bin/python3.6`
@@ -73,9 +106,7 @@ popd
 11. create a screen session
 12. in the screen session run `pipenv run scibot-server` you should create a link to the log files folder in ~/scibot/
 13. get letsencrypt certs using certbot, follow directions [here](https://certbot.eff.org/docs/using.html) (prefer standalone)
-14. alternately if using a cert from another registrar you may need to bundle your certs `cat my-cert.crt existing-bundle.crt > scicrunch.io.crt` (see https://gist.github.com/bradmontgomery/6487319 for details)
-15. before or after starting gunicorn you need to run `sudo yum install nginx && sudo cp ~/scibot/nginx.conf /etc/nginx/nginx.conf && sudo service start nginx`
-16. run `pipenv run scibot-sync` in another screen (if run in a terminal with a different environment you need to run step 10 again first)
+14. 
 
 ## Development setup
 To set up scibot for development (for example if you want to run manual releases)
