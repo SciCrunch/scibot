@@ -82,6 +82,7 @@ fi
 
 %post
 systemd-tmpfiles --create
+systemctl enable nginx
 systemctl enable scibot-bookmarklet
 systemctl enable scibot-bookmarklet-sync
 
