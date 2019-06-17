@@ -13,17 +13,19 @@ import csv
 import ssl
 import gzip
 import json
+import asyncio
 from io import StringIO
 from typing import Callable, Iterable, Tuple, Any, Generator
 from pathlib import Path
 from datetime import datetime
 from curio import run
 from curio.channel import AuthenticationError
-from flask import Flask, request, abort
+from flask import Flask, request, abort, current_app
 from hyputils.hypothesis import HypothesisUtils
 from scibot.config import source_log_location
 from scibot.utils import log
 from scibot.export import export_impl, export_json_impl
+from pyontutils.utils import Async, deferred
 
 try:
     from scibot.workflow import curatorTags
@@ -124,12 +126,20 @@ from scibot.submit import annotate_doi_pmid, submit_to_h
 
 def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker,
                                    resolver: Resolver, submitter: Submitter) -> Processor:
+
+    def async_inner(found):
+        log.info(found)
+        if notSubmittedCheck(found):
+            resolved = resolver(found)
+            yield submitter(found, resolved)
+
     def inner(text: str) -> Generator:
-        for found in finder(text):
-            log.info(found)
-            if notSubmittedCheck(found):
-                resolved = resolver(found)
-                yield submitter(found, resolved)
+        while True:
+            try:
+                yield from Async(rate=5)(deferred(async_inner)(found) for found in finder(text))
+                return
+            except RuntimeError:
+                asyncio.set_event_loop(current_app.config['loop'])
 
     return inner
 
@@ -257,7 +267,9 @@ def main(local=False):
     _sdefaults = {o.name:o.value if o.argcount else None for o in parse_defaults(sync__doc__)}
     _backup_sync_port = int(_sdefaults['--port'])
 
+    loop = asyncio.get_event_loop()
     app = Flask('scibot bookmarklet server')
+    app.config['loop'] = loop
 
     h = HypothesisUtils(username=username, token=api_token, group=group)
     h2 = HypothesisUtils(username=username, token=api_token, group=group2)
