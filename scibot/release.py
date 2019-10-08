@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3.7
 
 import os
 import pickle
@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc, Async, deferred
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from scibot import config
-from scibot.utils import uri_normalization, uri_normalize, makeSimpleLogger
+from scibot.utils import uri_normalization, uri_normalize, log, logd
 from scibot.config import api_token, username, group, group_staging, memfile, smemfile, pmemfile
 from scibot.config import resolver_xml_filepath
 from scibot.export import bad_tags, get_proper_citation
@@ -21,14 +21,14 @@ from scibot.services import get_pmid
 from scibot.workflow import parse_workflow
 from IPython import embed
 
-log = makeSimpleLogger('scibot.release')
+log = log.getChild('release')
 get_annos = Memoizer(memfile, api_token, username, group)
 get_sannos = Memoizer(smemfile, api_token, username, group_staging)
 get_pannos = Memoizer(pmemfile, api_token, username, '__world__')
 
-print('getting staged annos')
+log.info('getting staged annos')
 sannos = get_sannos()
-print('getting public annos')
+log.info('getting public annos')
 pannos = get_pannos()
 
 tag_types, tag_tokens, partInstances, valid_tagsets, terminal_tagsets, tag_transitions = parse_workflow()
@@ -157,6 +157,9 @@ class RRIDAnno(PaperHelper):
     _dois = None
     _pmids = None
     _done_all = False
+
+    class MoreThanOneRRIDError(Exception):
+        """ WHAT HAVE YOU DONE!? """
 
     @mproperty
     def created(self): return self._anno.created
@@ -315,8 +318,10 @@ class RRIDAnno(PaperHelper):
         maybe = [t for t in self._fixed_tags if t not in self.skip_tags and 'RRID:' in t]
         if maybe:
             if len(maybe) > 1:
+                # quick fix if someone deletes an annotation instead of editing it
+                # jq 'del( .[0][] | select(.id=="fCTV8I61EemN1osE0m90jw") )' /tmp/annos-1000-f451e811bb0cc0e41f47fc56b0217c686b4f34b7f9d88b508bac8a9023e59aed.json > /tmp/hah.json
                 if self.id:
-                    raise ValueError(f'More than one rrid in {maybe} \'{self.id}\' {self.shareLink}')
+                    raise self.MoreThanOneRRIDError(f'More than one rrid in {maybe} \'{self.id}\'\n{self.shareLink}\n{self.htmlLink}')
             if self._InsufficientMetadata:
                 # RRIDCUR:InsufficientMetadata RRIDs have different semantics...
                 rrid = None
@@ -371,8 +376,9 @@ class RRIDAnno(PaperHelper):
                 rrid = None
                 #rrid = 'RRID:' + srrid[-1]
             elif len(srrid) == 2:
-                srrid = srrid.replace('\n', ' ')  # FIXME
-                rrid = 'RRID:' + srrid[-1]
+                _, suffix = srrid
+                suffix = suffix.replace('\n', ' ')  # FIXME
+                rrid = 'RRID:' + suffix
             else:
                 rrid = None
 
@@ -451,7 +457,7 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
         r = cls._papers[uri][rrid]
         if r:
             if len(r) > 1:
-                print(tc.red('WARNING:'), f'Duplicate public annotation on RRID paper!\n{r}')
+                log.warning(f'Duplicate public annotation on RRID paper!\n{r}')
                 #raise TypeError(f'ERROR: Duplicate public annotation on RRID paper!\n{r}')
                 # we want the one that was submitted last because that is the one
                 # that we know we saw and not one that was replayed from the logs
@@ -498,7 +504,7 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
         return payload
 
     def release__world__(self):
-        print('This has not been implemented in api yet.')
+        log.warning('This has not been implemented in api yet.')
         return None
         if READ_ONLY:
             print('WARNING: READ_ONLY is set no action taken')
@@ -508,7 +514,7 @@ class PublicAnno(RRIDAnno):  # TODO use this to generate the annotation in the f
             return r
 
     def unrelease__world__(self):
-        print('This has not been implemented in api yet.')
+        log.warning('This has not been implemented in api yet.')
         return None
         if READ_ONLY:
             print('WARNING: READ_ONLY is set no action taken')
@@ -586,7 +592,7 @@ class Curation(RRIDAnno):
         super().__init__(anno, annos)
         if self._done_loading:
             if not self._done_all:  # pretty sure this is obsolete?
-                print('WARNING you ether have a duplicate annotation or your annotations are not sorted by updated.')
+                log.warning('You ether have a duplicate annotation or your annotations are not sorted by updated.')
 
             self._fetch_xmls()
                 #print(HypothesisHelper(anno, annos))
@@ -612,10 +618,10 @@ class Curation(RRIDAnno):
                 cls._xmllib = pickle.load(f)
             to_fetch = sorted(set(rrid for rrid in rrids if rrid not in cls._xmllib))
             ltf = len(to_fetch)
-            print(f'missing {ltf} rrids')
+            log.info(f'missing {ltf} rrids')
             def get_and_add(i, rrid):
                 url = cls.resolver + rrid + '.xml'
-                print(f'fetching {i} of {ltf}', url)
+                log.info(f'fetching {i + 1} of {ltf}', url)
                 resp = requests.get(url)
                 if resp.status_code >= 500:
                     log.warning(f'Failed to fetch {url} due to {resp.reason}')
@@ -731,7 +737,7 @@ class Curation(RRIDAnno):
                         # but it is actually incorrect, because replies can ALSO be corrected
                         return True
                     else:
-                        print(tc.red('we should never get here RRIDCUR:Incorrect is being used incorrectly!'), self.id)
+                        logd.error('We should never get here RRIDCUR:Incorrect is being used incorrectly! {self.id}')
             # the case where the original rrid from scibot has
             # been replaced by a corrected rrid from a reply
             # note the implicit rrid != _original_rrid
@@ -1035,10 +1041,10 @@ class Curation(RRIDAnno):
 
     def post_public(self):
         if READ_ONLY:
-            print('WARNING: READ_ONLY is set no action taken')
+            log.warning('READ_ONLY is set no action taken')
         elif self.public_id:
-            print('WARNING: this anno has already been released as {self.public_id!r}\n'
-                  'use Curation.update_public instead to archive the original as well.')
+            log.warning('this anno has already been released as {self.public_id!r}\n'
+                        'use Curation.update_public instead to archive the original as well.')
         else:
             if self._public_anno is None:  # dupes of others may go first
                 payload = self.public_payload  # XXX TODO

@@ -6,6 +6,11 @@ from pyontutils.utils import Async, deferred, chunk_list, anyMembers, noneMember
 from IPython import embed
 
 log = makeSimpleLogger('scibot')
+logd = log.getChild('data')
+
+from hyputils.hypothesis import log as _hlog
+_hlog.removeHandler(_hlog.handlers[0])
+_hlog.addHandler(log.handlers[0])
 
 
 class ResolutionError(Exception):
