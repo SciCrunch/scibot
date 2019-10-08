@@ -8,11 +8,25 @@ class KeyAccessor:
     def __init__(self, objects=tuple(), id_prop=None):
         self._propagate = issubclass(self.object_container_class, KeyAccessor)
         self._objects = {}
+        errors = []
         for o in objects:
             k = getattr(o, self.prop)
             if k not in self._objects:
                 self._objects[k] = self._make_cont()
-            self._objects[k].add(o)
+
+            try:
+                self._objects[k].add(o)
+            except BaseException as e:
+                if errors:
+                    try:
+                        raise e from errors[-1]
+                    except BaseException as ne:
+                        errors.append(ne)
+                else:
+                    errors.append(e)
+
+        if errors:
+            raise errors[-1]
 
         self._id_prop = None
         if id_prop is not None:
