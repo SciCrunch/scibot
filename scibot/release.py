@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc, Async, deferred
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from scibot import config
-from scibot.utils import uri_normalization, uri_normalize, log, logd
+from scibot.utils import uri_normalization, uri_normalize, log, logd, mproperty
 from scibot.config import api_token, username, group, group_staging, memfile, smemfile, pmemfile
 from scibot.config import resolver_xml_filepath
 from scibot.export import bad_tags, get_proper_citation
@@ -35,6 +35,7 @@ tag_types, tag_tokens, partInstances, valid_tagsets, terminal_tagsets, tag_trans
 
 READ_ONLY = False
 
+
 def getPMID(tags):
     # because sometime there is garbage in the annotations
     ids = set()
@@ -46,6 +47,7 @@ def getPMID(tags):
             raise ValueError('More than one PMID detected!')
         return list(ids)[0]
 
+
 def getDOI(tags):
     ids = set()
     for t in tags:
@@ -56,54 +58,13 @@ def getDOI(tags):
             raise ValueError('More than one DOI detected!')
         return list(ids)[0]
 
+
 def getIDS(tags):
     return getDOI(tags), getPMID(tags)
     
+
 def resolve(rrid):
     return Curation.resolver + rrid
-
-class mproperty:
-    def __init__(self, fget=None, fset=None, fdel=None, doc=None):
-        if doc is None and fget is not None and hasattr(fget, "__doc__"):
-            doc = fget.__doc__
-        self.__get = fget
-        self.__set = fset
-        self.__del = fdel
-        self.__doc__ = doc
-        if fget is not None:
-            self._attr_name = '___' + fget.__name__
-    
-    def __get__(self, inst, type=None):
-        if inst is None:
-            return self
-        if self.__get is None:
-            raise AttributeError('unreadable attribute')
-        
-        if not hasattr(inst, self._attr_name):
-            result = self.__get(inst)
-            setattr(inst, self._attr_name, result)
-        return getattr(inst, self._attr_name)
-    
-    def __set__(self, inst, value):
-        if self.__set is None:
-            raise AttributeError('can\'t set attribute')
-        delattr(inst, self._attr_name)
-        return self.__set(inst, value)
-
-    def __delete__(self, inst):
-        if self.__del is None:
-            raise AttributeError('can\'t delete attribute')
-        delattr(inst, self._attr_name)
-        return self.__del(inst)
-
-def mproperty_set(inst, func_name, value):
-    if isinstance(func_name, basestring):
-        property_name = '___' + func_name
-    elif hasattr(func_name, '__name__'):
-        property_name = '___' + func_name.func_name
-    else:
-        raise
-    setattr(inst, property_name, value)
 
 
 class PublicParagraphTags:
