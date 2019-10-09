@@ -618,10 +618,14 @@ class Curation(RRIDAnno):
                 cls._xmllib = pickle.load(f)
             to_fetch = sorted(set(rrid for rrid in rrids if rrid not in cls._xmllib))
             ltf = len(to_fetch)
+            nch = len(str(ltf))
             log.info(f'missing {ltf} rrids')
+            j = 0
             def get_and_add(i, rrid):
                 url = cls.resolver + rrid + '.xml'
-                log.info(f'fetching {i + 1} of {ltf}', url)
+                nonlocal j
+                j += 1
+                log.info(f'fetching {i + 1:>{nch}} {j:>{nch}} of {ltf} {url}')
                 resp = requests.get(url)
                 if resp.status_code >= 500:
                     log.warning(f'Failed to fetch {url} due to {resp.reason}')
@@ -630,10 +634,13 @@ class Curation(RRIDAnno):
                     log.warning(f'Failed to fetch {url} due to {resp.reason}')
                     return
 
+                # FIXME may need to lock here if we are dumping
+                # though the copying of the dict below seems to be another
+                # way around the dict changed size during iteration error
                 cls._xmllib[rrid] = resp.content
                 if i > 0 and not i % 500:
                     with open(cls.resolver_xml_filepath, 'wb') as f:
-                        pickle.dump(cls._xmllib, f)
+                        pickle.dump({**cls._xmllib}, f)
 
             Async(rate=20)(deferred(get_and_add)(i, rrid)
                            for i, rrid in enumerate(to_fetch))
