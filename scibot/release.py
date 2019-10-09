@@ -1247,19 +1247,19 @@ def sanity_and_stats(rc, annos):
     fr_better = none_dupes_resolved & (with_cur - with_val)
     fr_good = none_dupes_resolved & none_cur
     dj = disjointCover(none_dupes_resolved, fr_best, fr_better, fr_good)
-    print('We are disjoint and covering everything we think?', dj)
+    log.info(f'We are disjoint and covering everything we think? {dj}')
     first_release = sorted(none_dupes_resolved)
 
     #testing = sorted(with_val & with_dupes)
     #tests = testing[-10:]
     #tests = sorted(r for r in fr_better if r.corrected)[-10:]
     if not sannos:
-        print('No staged annos found.')
+        log.info('No staged annos found.')
         #sannos, pas = zip(*((a, pa) for a, pa in set(r.post_public() for r in tests) if a is not None))
     else:
         pass
     
-    print('Found public annos.')
+    log.info('Found public annos.')
     pas = [PublicAnno(a, pannos) for a in pannos]
     already_released = [r for r in first_release if r.public_id]
     second_release_with_old_criteria = [r for r in first_release if not r.public_id]
@@ -1302,13 +1302,20 @@ def sanity_and_stats(rc, annos):
     offset = 10
     testing = second_release[:offset]
     embed()
-    return
+    # test_release(testing)
+    # real_release(offest, testing, second_release, first_release, already_released)
+    # _annoyances(rr, with_rrid)
+
+def test_release(testing):
     test = [r.post_staging() for r in testing]
+    embed()
+
+def real_release(offest, testing, second_release, first_release, already_released):
     #testp = [r.post_public() for r in testing]
     # public_posted = [r.post_public() for r in second_release[offset:]]
     assert len(already_released) + len(second_release) == len(first_release)
-    return
 
+def _annoyances(rr, with_rrid):
     # # annoyances
 
     rrids_with_space = [r for r in with_rrid if ' ' in r.rrid]  # XXX
@@ -1384,6 +1391,7 @@ def cleanup():
     public_with_duplicate_known_curation = set(a.id for a in PublicAnno._olds)
     public_without_known_curation = set(pa.id for pa in pas if not pa.curation_ids)
     to_delete = public_with_duplicate_known_curation | public_without_known_curation 
+
 
 def report_gen(papers, unresolved):
     # reporting
@@ -1466,11 +1474,13 @@ def clean_dupes(get_annos, repr_issues=False):
     # get_annos.memoize_annos(annos)
     embed()
 
+
 def review(*objects):
     if len(objects) > 15:
         raise IOError('Trying to review too many ids at once, limit is 15')
     for o in objects:
         os.system('google-chrome-unstable' + o.shareLink)
+
 
 def ianno(annos):
     n_papers = len(Curation._papers)
@@ -1498,11 +1508,11 @@ def ianno(annos):
     [print(k, len(v)) for k, v in sorted(by_cur.items(), key=lambda kv:len(kv[1]))]
     c_bins = sorted((len(v) for v in by_cur.values()), reverse=True)[:10]
     import pylab as plt
+    plt.figure()
     plt.bar(range(10), c_bins)
     plt.title('Annotations by user (n = 22)')
     plt.xlabel('Curator rank (top 10)')
     plt.ylabel('Annotations + Replies')
-    plt.show()
 
     dformat = '%Y-%m-%dT%H:%M:%S.%f+00:00'
     def df(s):
@@ -1551,15 +1561,19 @@ def ianno(annos):
     t_bins = [e for e in t_bins_base if e < 30 and e > .5]
     t_big_bins = [e for e in t_bins_base if e >= 30]
     import numpy as np
+
+    plt.figure()
     plt.hist(t_bins, 30)
     plt.title(f'Curation time < 30 mins (n = {len(t_bins)} $\mu$ = {np.average(t_bins):.2f} med = {np.median(t_bins):.2f})')
     plt.xlabel('Time (minutes)')
     plt.ylabel('Number of curation sessions duration less than x')
-    plt.show()
+
+    plt.figure()
     plt.hist(t_big_bins, 20)
     plt.title(f'Curation time > 30 mins (n = {len(t_big_bins)})')
     plt.xlabel('Time (minutes)')
     plt.ylabel('Number of curation sessions duration less than x')
+
     plt.show()
 
 
