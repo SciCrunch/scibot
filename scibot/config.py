@@ -72,10 +72,10 @@ def _post(group_hash):
 
 memfile = group_to_memfile(group, _post)
 
-pmemfile =  f'{ucd}/annos-__world__-{username}.pickle'
+pmemfile =  f'{ucd}/scibot/annos-__world__-{username}.json'
 
 if group_staging == '__world__':
-    smemfile = f'{ucd}/annos-__world__-{username}.pickle'
+    smemfile = f'{ucd}/scibot/annos-__world__-{username}.json'
 else:
     smemfile = group_to_memfile(group_staging)
 
