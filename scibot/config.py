@@ -2,7 +2,7 @@ import sys
 from os import environ
 from socket import gethostname
 from pathlib import Path
-from hyputils.hypothesis import group_to_memfile, UID
+from hyputils.hypothesis import group_to_memfile, ucd
 
 # ports
 port_bookmarklet = 4443
@@ -72,10 +72,10 @@ def _post(group_hash):
 
 memfile = group_to_memfile(group, _post)
 
-pmemfile = f'/tmp/annos-{UID}-__world__-{username}.pickle'
+pmemfile =  f'{ucd}/annos-__world__-{username}.pickle'
 
 if group_staging == '__world__':
-    smemfile = f'/tmp/annos-{UID}-__world__-{username}.pickle'
+    smemfile = f'{ucd}/annos-__world__-{username}.pickle'
 else:
     smemfile = group_to_memfile(group_staging)
 
