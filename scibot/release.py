@@ -138,6 +138,10 @@ class RRIDAnno(PaperHelper):
 
     @property
     def _fixed_tags(self):
+        if self.Kill:
+            # propagate the kill all the way up the chain
+            return ['RRIDCUR:Kill']
+
         # fix bad tags using the annotation-* tags
         if 'annotation-tags:replace' in self._tags:
             return []  # these replies should be treated as invisible
