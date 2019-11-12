@@ -276,6 +276,9 @@ class RRIDAnno(PaperHelper):
 
         # TODO case where unresolved an no replies
 
+        if self.Kill:
+            return
+
         maybe = [t for t in self._fixed_tags if t not in self.skip_tags and 'RRID:' in t]
         if maybe:
             if len(maybe) > 1:
