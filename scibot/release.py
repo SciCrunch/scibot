@@ -663,7 +663,10 @@ class Curation(RRIDAnno):
     @property
     def _xml(self):
         if self._xmllib and self.rrid is not None:
-            return self._xmllib[self.rrid]
+            if self.rrid in self._xmllib:
+                return self._xmllib[self.rrid]
+            else:
+                log.error(f'{self.rrid} not in rrid xmllib!')
 
     @property
     def alert(self):
