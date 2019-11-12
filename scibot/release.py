@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 from pyontutils.utils import noneMembers, anyMembers, allMembers, TermColors as tc, Async, deferred
 from hyputils.hypothesis import HypothesisUtils, HypothesisAnnotation, HypothesisHelper, Memoizer, idFromShareLink, shareLinkFromId
 from scibot import config
-from scibot.utils import uri_normalization, uri_normalize, log, logd, mproperty
+from scibot.utils import uri_normalization, uri_normalize, log, logd
 from scibot.config import api_token, username, group, group_staging, memfile, smemfile, pmemfile
 from scibot.config import resolver_xml_filepath
 from scibot.export import bad_tags, get_proper_citation
@@ -84,6 +84,7 @@ class PaperHelper(HypothesisHelper):
         super().__init__(anno, annos)
         if self._done_loading:
             if self._papers is None:
+                breakpoint()
                 self.__class__._papers = Papers(self.objects.values())
             else:  # FIXME... this could fail...
                 self.__class__._papers.add(self)
@@ -122,26 +123,22 @@ class RRIDAnno(PaperHelper):
     class MoreThanOneRRIDError(Exception):
         """ WHAT HAVE YOU DONE!? """
 
-    @mproperty
+    @property
     def created(self): return self._anno.created
 
-    @mproperty
+    @property
     def user(self): return self._anno.user
 
-    @mproperty
+    @property
     def uri(self):
         return self._anno.uri
 
-    @mproperty
+    @property
     def uri_normalized(self):
         return uri_normalization(self._anno.uri)
 
     @property
     def _fixed_tags(self):
-        if self.Kill:
-            # propagate the kill all the way up the chain
-            return ['RRIDCUR:Kill']
-
         # fix bad tags using the annotation-* tags
         if 'annotation-tags:replace' in self._tags:
             return []  # these replies should be treated as invisible
@@ -164,75 +161,75 @@ class RRIDAnno(PaperHelper):
             out_tags.append(tag)
         return out_tags
 
-    @mproperty
+    @property
     def _Duplicate(self):
         return 'RRIDCUR:Duplicate' in self._fixed_tags
 
-    @mproperty
+    @property
     def Duplicate(self):
         return self.duplicates and self._Duplicate
 
-    @mproperty
+    @property
     def _Incorrect(self):
         return self.INCOR_TAG in self._fixed_tags
 
-    @mproperty
+    @property
     def Incorrect(self):
         return self.INCOR_TAG in self.public_tags
 
-    @mproperty
+    @property
     def _InsufficientMetadata(self):
         return 'RRIDCUR:InsufficientMetadata' in self._fixed_tags
 
-    @mproperty
+    @property
     def _IncorrectMetadata(self):
         return 'RRIDCUR:IncorrectMetadata' in self._fixed_tags
 
-    @mproperty
+    @property
     def _Missing(self):
         return 'RRIDCUR:Missing' in self._fixed_tags
 
-    @mproperty
+    @property
     def _KillPageNote(self):
         return 'RRIDCUR:KillPageNote' in self._fixed_tags
 
-    @mproperty
+    @property
     def KillPageNote(self):
         return bool([r for r in self.replies if r._KillPageNote]) or self._KillPageNote
 
-    @mproperty
+    @property
     def _Kill(self):
-        return 'RRIDCUR:Kill' in self._fixed_tags
+        return 'RRIDCUR:Kill' in self._tags
 
-    @mproperty
+    @property
     def Kill(self):
-        return bool([r for r in self.replies if r._Kill]) or self._Kill
+        return bool([r for r in self.replies if r.Kill]) or self._Kill
 
-    @mproperty
+    @property
     def _NotRRID(self):
         return 'RRIDCUR:NotRRID' in self._fixed_tags
 
-    @mproperty
+    @property
     def NotRRID(self):
         return bool([r for r in self.replies if r._NotRRID]) or self._NotRRID
 
-    @mproperty
+    @property
     def _Unrecognized(self):
         return 'RRIDCUR:Unrecognized' in self._fixed_tags
 
-    @mproperty
+    @property
     def _Unresolved(self):
         return self.UNRES_TAG in self._tags  # scibot is a good tagger
 
-    @mproperty
+    @property
     def Unresolved(self):
         return self._Unresolved and not self.validated_rrid
 
-    @mproperty
+    @property
     def _Validated(self):
         return self.VAL_TAG in self._fixed_tags
 
-    @mproperty
+    @property
     def Validated(self):
         return bool([r for r in self.replies if r._Validated]) or self._Validated
 
@@ -677,7 +674,7 @@ class Curation(RRIDAnno):
         else:
             return None
 
-    @mproperty
+    @property
     def corrected(self):  # 863
         """ # this doesn't work because IF there is exact then we cannot backtrack
         return (self.done_loading and
@@ -718,7 +715,7 @@ class Curation(RRIDAnno):
             elif self._original_rrid is not None:
                 return True
 
-    @mproperty
+    @property
     def found(self):
         return (self._done_loading
                 and not self.corrected
@@ -729,7 +726,7 @@ class Curation(RRIDAnno):
         self._weird_type = type
         return True
 
-    @mproperty
+    @property
     def weird(self):
         """There are some weird combinations out there ..."""
         return (self.isAstNode and not self.rrid and self.Validated
@@ -746,7 +743,7 @@ class Curation(RRIDAnno):
                 and self.weird_type('validated and corrected')
         )
 
-    @mproperty
+    @property
     def bad_tag_logic(self):
         ptags = frozenset(t for t in self.public_tags if 'RRID:' not in t)
         if not ptags:
@@ -758,17 +755,17 @@ class Curation(RRIDAnno):
                 # incorrect + incorrectmetadata no...
         )
 
-    @mproperty
+    @property
     def broken(self):
         return (not self.rrid and self.exact and 'RRID' in self.exact)
 
-    @mproperty
+    @property
     def very_bad(self):
         """ Things that we want to release that don't have an RRID
             lots of overlap with broken """
         return self.isReleaseNode and not self.Duplicate and not self.rrid and self._type == 'annotation'
 
-    @mproperty
+    @property
     def strange_overlaps(self):
         """ Make sure none of our strange properties overlap """
         return (self.weird and self.broken
@@ -777,7 +774,7 @@ class Curation(RRIDAnno):
                 or
                 self.broken and self.bad_tag_logic)
 
-    @mproperty
+    @property
     def proper_citation(self):
         if self.isAstNode and self.rrid:
             if self._xml is None:
@@ -788,7 +785,7 @@ class Curation(RRIDAnno):
                 pc = f'({pc})'
             return pc
 
-    @mproperty
+    @property
     def canonical_rrid(self):
         if self.proper_citation:
             return 'RRID:' + self.proper_citation.strip('(').rstrip(')').split('RRID:')[-1]
@@ -818,7 +815,7 @@ class Curation(RRIDAnno):
         if self.isReleaseNode and self.public_id:
             return shareLinkFromId(self.public_id)
 
-    @mproperty
+    @property
     def _curators(self):
         out = set()
         if self._anno.user != self.h_curation.username:
@@ -828,13 +825,13 @@ class Curation(RRIDAnno):
                 out.update(r._curators)
         return out
 
-    @mproperty
+    @property
     def curators(self):
         return sorted(set((*self._curators, *(n
                                               for d in self.duplicates
                                               for n in d._curators))))
 
-    @mproperty
+    @property
     def _curator_notes(self):
         out = set()
         if self._text:
@@ -845,7 +842,7 @@ class Curation(RRIDAnno):
                     out.update(r.curator_notes)
         return out
 
-    @mproperty
+    @property
     def curator_notes(self):
         return sorted(set((*self._curator_notes, *(n
                                                    for d in self.duplicates
