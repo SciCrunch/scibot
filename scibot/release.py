@@ -84,7 +84,6 @@ class PaperHelper(HypothesisHelper):
         super().__init__(anno, annos)
         if self._done_loading:
             if self._papers is None:
-                breakpoint()
                 self.__class__._papers = Papers(self.objects.values())
             else:  # FIXME... this could fail...
                 self.__class__._papers.add(self)
