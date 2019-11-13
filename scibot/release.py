@@ -666,7 +666,10 @@ class Curation(RRIDAnno):
             if self.rrid in self._xmllib:
                 return self._xmllib[self.rrid]
             else:
-                log.error(f'{self.rrid} not in rrid xmllib!')
+                log.error(f'{self.rrid} not in rrid xmllib!\n'
+                          f'{self._repr!r}\n'
+                          f'{self.htmlLink}\n'
+                          f'{self.shareLink}')
 
     @property
     def alert(self):
@@ -782,18 +785,21 @@ class Curation(RRIDAnno):
     @property
     def proper_citation(self):
         if self.isAstNode and self.rrid:
-            if self._xml is None:
+            xml = self._xml
+            if xml is None:
                 return 'XML was not fetched no citation included.'
 
-            pc = get_proper_citation(self._xml)
+            pc = get_proper_citation(xml)
             if not pc.startswith('(') and ' ' in pc:
                 pc = f'({pc})'
             return pc
 
     @property
     def canonical_rrid(self):
-        if self.proper_citation:
-            return 'RRID:' + self.proper_citation.strip('(').rstrip(')').split('RRID:')[-1]
+        if self.rrid:
+            pc = self.proper_citation
+            if pc:
+                return 'RRID:' + pc.strip('(').rstrip(')').split('RRID:')[-1]
 
     @property
     def public_id(self):
@@ -1403,6 +1409,7 @@ def report_gen(papers, unresolved):
 
     print(report)
     return report
+
 
 def to_review(unresolved):
     to_review_txt = [f'{r.shareLink}    resolver:    {r.rridLink}\n' for r in unresolved]
