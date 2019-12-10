@@ -12,11 +12,12 @@ from curio import run, socket, UniversalEvent, TaskGroup
 from curio.task import timeout_after, sleep
 from curio.errors import TaskTimeout, TaskCancelled, TaskGroupError
 from curio.channel import Channel, Connection, AuthenticationError
-from scibot.utils import makeSimpleLogger
+from scibot.utils import log as _log
 
-log = makeSimpleLogger('scibot.aChannel')
-clog = makeSimpleLogger('scibot.sync.client')  # TODO add process info here
-mlog = makeSimpleLogger('scibot.sync.manager')
+log = _log.getChild('aChannel')
+slog = _log.getChild('sync')
+clog = slog.getChild('client')  # TODO add process info here
+mlog = slog.getChild('manager')
 
 done = UniversalEvent()
 
@@ -221,7 +222,15 @@ def main():
         raise KeyError('Please set the SCIBOT_SYNC environment variable')
 
     import os
-    os.sys.stdout.write(f'\x1b]2;{os.path.basename(__file__)}\x07\n')
+    try:
+        # This is in a try block because colorama (used by colorlog) wraps
+        # redirected stdout to strip certain control codes which can cause an
+        # AttributeError: 'NoneType' object has no attribute 'set_title'
+        # because colorama changes os.sys.stdout.write in a way that
+        # removes the call to set_title
+        os.sys.stdout.write(f'\x1b]2;{os.path.basename(__file__)}\x07\n')
+    except AttributeError as e:
+        slog.exception(e)
 
     from docopt import docopt
     args = docopt(__doc__)
