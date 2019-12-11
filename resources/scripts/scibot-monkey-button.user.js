@@ -5,6 +5,7 @@
 // @match       *://*/*
 // @exclude     *://*.google.com/*
 // @exclude     *://*.github.com/*
+// @exclude     *://github.com/*
 // @version     1.0
 // @grant       GM_addStyle
 // ==/UserScript==
