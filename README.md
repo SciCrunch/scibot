@@ -90,6 +90,21 @@ Start services as root
 systemctl start nginx scibot-sync scibot-bookmarklet
 ```
 
+### Updating
+```bash
+sudo su scibot -
+pushd scibot
+echo "$(date -Is) $(git rev-parse HEAD)" >> ~/previous-scibot-hashes
+git pull
+mv Pipfile.lock "Pipefile.lock.$(date -Is)"
+~/.local/bin/pipenv install
+```
+
+```bash
+systemctl restart scibot-sync
+```
+
+### manual setup
 Install steps 
 0. ssh in to the host that will serve the script
 1. `sudo yum install gcc libxml2 libxml2-devel libxslt libxslt-devel python36 python36-devel python36-pip`
@@ -105,7 +120,7 @@ Install steps
 11. create a screen session
 12. in the screen session run `pipenv run scibot-server` you should create a link to the log files folder in ~/scibot/
 13. get letsencrypt certs using certbot, follow directions [here](https://certbot.eff.org/docs/using.html) (prefer standalone)
-14. 
+
 
 ## Development setup
 To set up scibot for development (for example if you want to run manual releases)
@@ -113,19 +128,8 @@ To set up scibot for development (for example if you want to run manual releases
 1. From your git folder run `git clone https://github.com/tgbugs/scibot.git`
 2. `pushd scibot`
 3. `pip3 install --user -e .` will install requirements and register the
-scibot folder under version control with python as the scibot module.
+scibot folder that is under version control with python as the scibot module.
 4. `popd`
-5. scibot currently makes use of my version of some of the core hypothes.is
-code which is not available as a package, to install it run the following
-```bash
-git clone https://github.com/tgbugs/h.git
-pushd h
-git checkout flask-new-3
-popd
-echo "export PYTHONPATH=$(pwd)/h:${PYTHONPATH}" >> ~/.bashrc
-# may need to be ~/.bash_profile depending on your system
-source ~/.bashrc
-```
 
 ## If all else fails
 Make sure you have >=python3.6 and pip installed.
