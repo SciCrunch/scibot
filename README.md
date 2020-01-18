@@ -87,10 +87,11 @@ steps needed at all.
 
 Start services as root
 ```bash
-systemctl start nginx scibot-sync scibot-bookmarklet
+systemctl start nginx scibot-bookmarklet-sync scibot-bookmarklet
 ```
 
 ### Updating
+On the scibot host
 ```bash
 sudo su scibot -
 pushd scibot
@@ -100,8 +101,9 @@ mv Pipfile.lock "Pipefile.lock.$(date -Is)"
 ~/.local/bin/pipenv install
 ```
 
+Restart as root
 ```bash
-systemctl restart scibot-sync
+systemctl restart scibot-bookmarklet-sync scibot-bookmarklet
 ```
 
 ### manual setup
