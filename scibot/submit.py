@@ -116,6 +116,8 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
     elif status_code >= 500:
         s = 'Resolver lookup failed due to server error.'
         s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
+        r = None
+        log.error(f'{status_code} error for {resolver_uri}')
     else:
         s = 'Resolver lookup failed.'
         s += '<hr><p><a href="%s">resolver lookup</a></p>' % resolver_uri
@@ -127,7 +129,9 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
                                                                   text=s,
                                                                   tags=new_tags + ['RRIDCUR:Unresolved'],
                                                                   extra=extra,)
-    found_rrids[exact] = r.json()['links']['incontext']
+    if r is not None:
+        found_rrids[exact] = r.json()['links']['incontext']
+
     return r
 
 def api_row_to_db(api_row):
