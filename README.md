@@ -136,3 +136,7 @@ scibot folder that is under version control with python as the scibot module.
 ## If all else fails
 Make sure you have >=python3.6 and pip installed.
 Clone the repo and run `python setup.py develop --user`.
+
+## CoC
+SciBot adheres to the Contributor Covenant:
+https://www.contributor-covenant.org/
