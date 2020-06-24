@@ -43,7 +43,7 @@ vim /etc/conf.d/scibot-bookmarklet  # set username, group, api key, etc.
 ## Setup on ubuntu 18.04
 Set `export PATH=~/.local/bin:${PATH}` in `~/.bashrc`
 1. `sudo apt-get install build-essential python3-dev libxml2-dev libxslt1-dev`
-2. `sudo pip3 install --user pip pipenv`
+2. `pip3 install --user pip pipenv`
 3. `git clone https://github.com/SciCrunch/scibot.git`
 4. `cd scibot && pipenv install`
 5. `pipenv shell` to get an environment with acess to all the required libraries.
