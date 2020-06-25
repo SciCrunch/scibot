@@ -45,7 +45,7 @@ Set `export PATH=~/.local/bin:${PATH}` in `~/.bashrc`
 1. `sudo apt-get install build-essential python3-dev libxml2-dev libxslt1-dev`
 2. `pip3 install --user pip pipenv`
 3. `git clone https://github.com/SciCrunch/scibot.git`
-4. `cd scibot && pipenv install`
+4. `cd scibot && pipenv install --skip-lock`
 5. `pipenv shell` to get an environment with acess to all the required libraries.
 6. Inside the pipenv shell (after following steps 6-10 below) you should
 be able to run commands like `python scibot/export.py`.
@@ -78,9 +78,9 @@ Install scibot codebase as the scibot user
 ```bash
 git clone https://github.com/SciCrunch/scibot.git
 pushd scibot
-pipenv install
+pipenv install --skip-lock
 ```
-Hopefully this step will become simpler nce we start pushing releases.
+Hopefully this step will become simpler once we start pushing releases.
 `pipenv install scibot` or alternately it may also be possible to package
 everything we need in the rpm and only install that. With none of the other
 steps needed at all.
@@ -98,7 +98,7 @@ pushd scibot
 echo "$(date -Is) $(git rev-parse HEAD)" >> ~/previous-scibot-hashes
 git pull
 mv Pipfile.lock "Pipefile.lock.$(date -Is)"
-~/.local/bin/pipenv install
+~/.local/bin/pipenv install --skip-lock
 ```
 
 Restart as root
