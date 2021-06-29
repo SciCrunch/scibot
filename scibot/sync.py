@@ -9,8 +9,8 @@ Options:
 """
 
 from curio import run, socket, UniversalEvent, TaskGroup
-from curio.task import timeout_after, sleep
-from curio.errors import TaskTimeout, TaskCancelled, TaskGroupError
+from curio.time import timeout_after, sleep
+from curio.errors import TaskTimeout, TaskCancelled
 from curio.channel import Channel, Connection, AuthenticationError
 from scibot.utils import log as _log
 
@@ -111,7 +111,7 @@ class Locker:
 
 async def exit(task_group):
     await done.wait()
-    clog.info(f'sync {task_group._name} exiting ...')  # have to call this before cancel
+    clog.info(f'sync {task_group} exiting ...')  # have to call this before cancel
     await task_group.cancel_remaining()
 
 
@@ -155,7 +155,7 @@ async def manager(chan, syncword):
             except ConnectionResetError as e:
                 mlog.warning('client connection attempt did not terminate property')
 
-    async with TaskGroup(name='manager') as connection_tasks:
+    async with TaskGroup() as connection_tasks:
         await connection_tasks.spawn(exit, connection_tasks)
         await connection_tasks.spawn(listen_for_new_conns, connection_tasks)
 
@@ -170,7 +170,7 @@ async def client(chan, syncword):
             clog.debug(f'got connection {connection}')
             return connection
 
-        async with TaskGroup(name='client auth', wait=any) as auth_or_exit:
+        async with TaskGroup(wait=any) as auth_or_exit:
             clog.info('waiting for sync services to start')
             exit_task = await auth_or_exit.spawn(exit, auth_or_exit)
             conn_task = await auth_or_exit.spawn(connect)
@@ -192,7 +192,7 @@ async def client(chan, syncword):
             return resp
 
         try:
-            async with TaskGroup(name='client send', wait=any) as send_or_exit:
+            async with TaskGroup(wait=any) as send_or_exit:
                 exit_task = await send_or_exit.spawn(exit, send_or_exit)
                 send_task = await send_or_exit.spawn(sendit)
 
@@ -204,11 +204,7 @@ async def client(chan, syncword):
             except RuntimeError as e:  # FIXME not quite right?
                 clog.error(e)  # not eure what is causing this ... maybe a connection error?
 
-        except (EOFError, BrokenPipeError, TaskGroupError) as e:
-            if isinstance(e, TaskGroupError):
-                if EOFError not in e.errors:
-                    raise e
-
+        except (EOFError, BrokenPipeError) as e:
             c = await auth()
             heh[0] = c
             return await send(uri)
