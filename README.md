@@ -133,9 +133,35 @@ To set up scibot for development (for example if you want to run manual releases
 scibot folder that is under version control with python as the scibot module.
 4. `popd`
 
+## Dev server
+You should change `lol` to something less guessable even if it is only
+running on localhost.
+
+Run the following blocks in two separate terminals and connect to
+`https://localhost:4443/bookmarklet`.  If you try `http` you will get
+a connection error.
+
+You will need to generate the self signed certs using openssl as
+described in the comments in [bookmarklet.py::main()](./scibot/bookmarklet.py).
+Alternately comment out the ssl wrapping of the socket and use `http`.
+
+```bash
+SCIBOT_SYNC=lol python -m scibot.sync
+```
+
+```bash
+SCIBOT_USERNAME=scibot \
+SCIBOT_GROUP=dev-group \
+SCIBOT_GROUP2=dev-group \
+SCIBOT_GROUP_STAGING=__world__ \
+SCIBOT_API_TOKEN=hypothesis-api-key \
+SCIBOT_SYNC=lol \
+python -m scibot.bookmarklet
+```
+
 ## If all else fails
-Make sure you have >=python3.6 and pip installed.
-Clone the repo and run `python setup.py develop --user`.
+Make sure you have >=python3.6 and pip installed.  Clone the repo and
+run `python setup.py develop --user`.
 
 ## CoC
 SciBot adheres to the Contributor Covenant:
