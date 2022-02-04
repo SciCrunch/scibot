@@ -1,9 +1,10 @@
-#!/usr/bin/env python3.6
-
 import requests
 from hyputils.memex.util.uri import normalize as uri_normalize
 from pyontutils.utils import Async, deferred, chunk_list, anyMembers, noneMembers, makeSimpleLogger
-from IPython import embed
+try:
+    breakpoint
+except NameError:
+    from IPython import embed as breakpoint
 
 log = makeSimpleLogger('scibot')
 logd = log.getChild('data')
@@ -64,7 +65,7 @@ def zap_deleted(get_annos):
         missing += [id for id, ok in responses if not ok]
 
     # TODO actually remove them
-    embed()
+    breakpoint()
 
 
 def resolution_chain(iri):
