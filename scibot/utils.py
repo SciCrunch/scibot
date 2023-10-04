@@ -1,5 +1,5 @@
 import requests
-from hyputils.memex.util.uri import normalize as uri_normalize
+from .uri import normalize as uri_normalize
 from pyontutils.utils import Async, deferred, chunk_list, anyMembers, noneMembers, makeSimpleLogger
 try:
     breakpoint
