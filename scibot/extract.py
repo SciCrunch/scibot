@@ -20,7 +20,18 @@ agprefixes = (
     ('addgene cat', 'Addgene'),
     ('addgene.org', 'Addgene'),
     ('addgene ID', 'Addgene'),  # probably won't work
-    ('addgene cat. no.', 'Addgene'),  # probably won't work
+    ('addgene cat. no.', 'Addgene'),
+    ('Jackson Laboratory Cat', 'IMSR_JAX'),
+    ('Jackson Laboratory	Cat', 'IMSR_JAX'),
+    ('Jackson Laboratory Stock', 'IMSR_JAX'),
+    ('Jackson Laboratory	Stock', 'IMSR_JAX'),
+    ('The Jackson Laboratory', 'IMSR_JAX'),
+    ('The Jackson Laboratory Stock', 'IMSR_JAX'),
+    ('The Jackson Laboratory	Stock', 'IMSR_JAX'),
+    ('The Jackson Laboratory Cat', 'IMSR_JAX'),
+    ('The Jackson Laboratory	Cat', 'IMSR_JAX'),
+    ('Jackson Laboratories Cat', 'IMSR_JAX'),
+    ('Jackson Laboratories	Cat', 'IMSR_JAX'),
 )
 
 prefixes = (
@@ -292,7 +303,7 @@ def find_rrids(text):
     # second round
     orblock = '(' + '|'.join(col0(prefixes)) + ')'
     sep = '(:|_)([ \t]*)'
-    agsep = '([ \t]*#)([ \t]*)'
+    agsep = '([ \t]*#)([ \t]*)'   # fixme doesn't work with "Stock No." or "Stock No:"
     agorblock = '(' + '|'.join(col0(agprefixes)) + ')'
     regex2 = ('(.{0,32})(?:' + orblock + f'{sep}(\d+)|(CVCL){sep}(\w+)|'
               + agorblock + f'{agsep}(\w+))([^\w].{{0,31}})')  # the first 0,32 always greedy matches???
