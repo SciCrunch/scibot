@@ -1,0 +1,41 @@
+* clear space and backup
+This is the workflow as it exists now, it is not remotely ideal.
+
+scibot.scicrunch.io
+#+begin_src bash
+pushd /var/lib/scibot/logs
+sudo gzip *.json
+sudo mv *.gz gzipped
+#+end_src
+
+orpheus
+#+begin_src bash
+DATE=2023-04-01
+scibot.scicrunch.io:/var/lib/scibot/logs/gzipped/* /home/tom/files/scibot/${DATE}/
+pushd ${DATE}
+gunzip *.json.gz
+popd
+XZ_OPT=-e9 tar -cvJf ${DATE}.tar.xz ${DATE}
+# confirm backup
+#+end_src
+
+athena
+#+begin_src bash
+DATE=2023-04-01
+pushd ~/nas/logs/scibot-backup
+rsync --progress -vapX orpheus:/home/tom/files/scibot/${DATE}.tar.xz .
+#+end_src
+
+orpheus
+#+begin_src bash
+DATE=2023-04-01
+# rm ${DATE}/*.json
+# rmdir ${DATE}
+#+end_src
+
+scibot.scicrunch.io
+#+begin_src bash
+pushd /var/lib/scibot/logs
+# sudo rm gzipped/*.json.gz
+#+end_src
+
