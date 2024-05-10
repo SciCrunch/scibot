@@ -39,6 +39,7 @@ prefixes = (
     ('FlyBase', 'FlyBase'),
     ('HAR', 'IMSR_HAR'),
     ('JAX', 'IMSR_JAX'),
+    #('[Jj]ackson [Ll]aboratory [Ss]train #', 'IMSR_JAX'),
     ('KOMP', 'IMSR_KOMP'),
     ('MGI', 'MGI'),
     ('MMRRC', 'MMRRC'),
@@ -51,6 +52,7 @@ prefixes = (
     ('TAC', 'IMSR_TAC'),
     ('TIGM', 'IMSR_TIGM'),
     ('TSC', 'TSC'),
+    ('VDRC', 'VDRC'),
     ('WB', 'WB'),
     ('WB-STRAIN', 'WB-STRAIN'),
     ('WTSI', 'IMSR_WTSI'),
@@ -292,7 +294,7 @@ def find_rrids(text):
 
     # second round
     orblock = '(' + '|'.join(col0(prefixes)) + ')'
-    sep = '(:|_)([ \t]*)'
+    sep = '\s*(:|_|#)(\s*)'
     agsep = '([ \t]*#)([ \t]*)'
     agorblock = '(' + '|'.join(col0(agprefixes)) + ')'
     regex2 = ('(.{0,32})(?:' + orblock + f'{sep}(\d+)|(CVCL){sep}(\w+)|'
@@ -449,8 +451,4 @@ class PaperId:
         both = BeautifulSoup(out, 'lxml')
         doi = getDoi(both, both)
         return doi
-
-
-
-
 
