@@ -293,7 +293,7 @@ def find_rrids(text):
     # second round
     orblock = '(' + '|'.join(col0(prefixes)) + ')'
     sep = '(:|_)([ \t]*)'
-    agsep = '([ \t]*#)([ \t]*)'
+    agsep = '([ \t]*[#:])([ \t]*)' #agsep = '([ \t]*#)([ \t]*)'
     agorblock = '(' + '|'.join(col0(agprefixes)) + ')'
     regex2 = ('(.{0,32})(?:' + orblock + f'{sep}(\d+)|(CVCL){sep}(\w+)|'
               + agorblock + f'{agsep}(\w+))([^\w].{{0,31}})')  # the first 0,32 always greedy matches???
