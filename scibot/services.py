@@ -49,8 +49,14 @@ def get_pmid(doi):  # TODO
         if pmid:
             log.info(f'got pmid from pubmed: {pmid}')
             return 'PMID:' + pmid
-    params={'idtype':'auto', 'format':'json', 'Ids':doi, 'convert-button':'Convert'}
-    pj = requests.post('https://www.ncbi.nlm.nih.gov/pmc/pmctopmid/', params=params).json()
+    params={'idtype':'auto', 'format':'json', 'ids':doi,}
+    endpoint = 'https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/'
+    resp = requests.get(endpoint, params=params)
+    if resp.ok:
+        pj = resp.json()
+    else:
+        resp.raise_for_status()
+
     log.debug(pj)
     for rec in pj['records']:
         try:

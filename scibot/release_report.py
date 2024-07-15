@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3
 import csv
 import socket
 from collections import namedtuple, Counter
@@ -6,7 +6,10 @@ from pyontutils.utils import mysql_conn_helper
 from scibot.release import Curation, PublicAnno, get_annos, get_pannos
 from scibot.utils import uri_normalization
 from scibot import config
-from IPython import embed
+try:
+    breakpoint
+except NameError:
+    from IPython import embed as breakpoint
 
 
 def dbUri(user='nif_eelg_secure', host='nif-mysql.crbs.ucsd.edu', port=3306, database='nif_eelg'):
@@ -198,7 +201,7 @@ def main():
         writer = csv.writer(f, lineterminator='\n')
         writer.writerows(public_report)
 
-    embed()
+    breakpoint()
 
 
 if __name__ == '__main__':

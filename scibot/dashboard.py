@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3
 import atexit
 from os import environ
 from pathlib import Path
@@ -15,7 +15,10 @@ from hyputils.subscribe import preFilter, AnnotationStream
 from hyputils.handlers import helperSyncHandler, filterHandler
 from hyputils.hypothesis import Memoizer
 from flask import Flask, render_template, request, url_for
-from IPython import embed
+try:
+    breakpoint
+except NameError:
+    from IPython import embed as breakpoint
 
 print('END IMPORTS')
 
@@ -420,7 +423,7 @@ def make_app(annos, pannos=[]):
     #new_function = route('/my/route')(route_base)
 
     #return new_function
-    #embed()
+    #breakpoint()
     return app
     #new_function_outside = make_app('not really annos')
 

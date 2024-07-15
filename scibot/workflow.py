@@ -1,7 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
 from rdflib import URIRef
-from IPython import embed
 from pyontutils.core import makeGraph, OntId
 import pyontutils.graphml_to_ttl as gt
 from pyontutils import combinators as cmb
@@ -14,8 +13,11 @@ from rdflib import ConjunctiveGraph, BNode
 from hyputils.hypothesis import Memoizer, HypothesisHelper
 from scibot.utils import uri_normalization
 #from rdflib.extras import infixowl as io
-
 from pyontutils.graphml_to_ttl import WorkflowMapping, PaperIdMapping
+try:
+    breakpoint
+except NameError:
+    from IPython import embed as breakpoint
 
 curator_exactrrid_unrecognized_rrid = None
 curator_exactrrid_syntax_error_rrid = None
@@ -1023,7 +1025,7 @@ def main():
     no id:      {len(no_id)}
     """
     print(report)
-    embed()
+    breakpoint()
     return
 
 def old_main():
@@ -1105,7 +1107,7 @@ def old_main():
     # so that we get the algorithem right for the streaming case
     # and then scream of people edit their annotations becuase update is no fun
 
-    embed()
+    breakpoint()
 
 
 if __name__ == '__main__':

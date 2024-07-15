@@ -23,7 +23,10 @@ from scibot import config
 from scibot.anno import quickload, quickuri, add_doc_all, validate
 from scibot.utils import makeSimpleLogger, uri_normalization
 from interlex.core import makeParamsValues  # FIXME probably need a common import ...
-from IPython import embed
+try:
+    breakpoint
+except NameError:
+    from IPython import embed as breakpoint
 
 
 def getSession(dburi=config.dbUri(), echo=False):
@@ -237,7 +240,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             doc_mismatch = [a for a in annos if anno_id_to_doc_id[a.id] != a.document_id]
             assert not doc_mismatch, doc_mismatch
             # don't use the orm to do this, it is too slow even if you send the other queries above
-            #embed()
+            #breakpoint()
             uri_mismatch = [(a.target_uri, doc_uris[a.document_id], a)
                             for a in annos
                             if a.target_uri not in doc_uris[a.document_id]]
@@ -257,7 +260,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             self.session.commit()
             self.log.debug('commit done')
         else:
-            embed()
+            breakpoint()
 
     def q_create_annos(self, anno_records, anno_id_to_doc_id):
         # NOTE values_sets adds the document_id field and
@@ -293,7 +296,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
             self.log.debug('anno execute done')
         except BaseException as e:
             self.log.error('YOU ARE IN ERROR SPACE')
-            embed()
+            breakpoint()
 
         self.session.flush()
         self.log.debug('anno flush done')
@@ -391,7 +394,7 @@ class AnnoSyncFactory(Memoizer, DbQueryFactory):
                     doc = new_docs[uri_normed]
 
             #if type(doc.created) == str:
-                #embed()
+                #breakpoint()
             yield id, doc
 
             if uri_normalize(uri) not in h_existing_unnormed:

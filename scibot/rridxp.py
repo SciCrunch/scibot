@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3
 """rridxp: export and crunch RRID data
 
 Usage:
@@ -27,7 +27,11 @@ import csv
 import json
 from datetime import datetime
 from pyontutils.utils import anyMembers
-from IPython import embed
+try:
+    breakpoint
+except NameError:
+    from IPython import embed as breakpoint
+
 
 def UTCNOW():
     return datetime.isoformat(datetime.utcnow())
@@ -107,7 +111,7 @@ def main():
             csv.writer(f, lineterminator='\n').writerows(nomatch)
 
     if args['--debug']:
-        embed()
+        breakpoint()
 
 if __name__ == '__main__':
     main()

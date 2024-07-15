@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.7
+#!/usr/bin/env python3
 
 import os
 import pickle
@@ -19,7 +19,10 @@ from scibot.submit import annotate_doi_pmid
 from scibot.papers import Papers, SameDOI, SamePMID
 from scibot.services import get_pmid
 from scibot.workflow import parse_workflow
-from IPython import embed
+try:
+    breakpoint
+except NameError:
+    from IPython import embed as breakpoint
 
 log = log.getChild('release')
 get_annos = Memoizer(memfile, api_token, username, group)
@@ -560,7 +563,7 @@ class Curation(RRIDAnno):
 
             self._fetch_xmls()
                 #print(HypothesisHelper(anno, annos))
-                #embed()
+                #breakpoint()
                 #raise BaseException('WHY ARE YOU GETTING CALLED MULTIPLE TIMES?')
             #self._do_papers()
             #self.compute_stats()
@@ -1274,14 +1277,14 @@ def sanity_and_stats(rc, annos):
 
     offset = 10
     testing = second_release[:offset]
-    embed()
+    breakpoint()
     # test_release(testing)
     # real_release(offest, testing, second_release, first_release, already_released)
     # _annoyances(rr, with_rrid)
 
 def test_release(testing):
     test = [r.post_staging() for r in testing]
-    embed()
+    breakpoint()
 
 def real_release(offest, testing, second_release, first_release, already_released):
     #testp = [r.post_public() for r in testing]
@@ -1356,7 +1359,7 @@ def _annoyances(rr, with_rrid):
     print(f'For me:    {len(me_review)}')
     print(f'For other: {len(other_review)}')
 
-    embed()
+    breakpoint()
 
 
 def cleanup():
@@ -1446,7 +1449,7 @@ def clean_dupes(get_annos, repr_issues=False):
     deduped = [a for a in annos if a.id in dupes]
     assert not len(dupes) or len(preunduped) // len(dupes) == 2, 'Somehow you have managed to get more than 1 duplicate!'
     # get_annos.memoize_annos(annos)
-    embed()
+    breakpoint()
 
 
 def review(*objects):
@@ -1580,7 +1583,7 @@ def main():
         #id_annos.append(resp)
     #id_annos = Parallel(n_jobs=5)(delayed(idPaper)(url)
                                   #for url in sorted(rrcu._papers))
-    #embed()
+    #breakpoint()
     #return
 
     # sanity checks
@@ -1591,7 +1594,7 @@ def main():
         ianno_stats = ianno(annos)
     except AssertionError as e:
         print(e)
-        embed()
+        breakpoint()
 
 if __name__ == '__main__':
     main()

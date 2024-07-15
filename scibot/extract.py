@@ -40,6 +40,7 @@ prefixes = (
     ('ARC', 'IMSR_ARC'),
     ('BCBC', 'BCBC'),
     ('BDSC', 'BDSC'),
+    ('DGRC', 'DGRC'),
     ('CGC', 'CGC'),
     ('CRL', 'IMSR_CRL'),
     #('CVCL', 'CVCL'),  # numbers + letters :/

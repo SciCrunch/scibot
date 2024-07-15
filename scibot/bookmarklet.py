@@ -31,9 +31,6 @@ except ImportError:
     # FIXME don't want a hard rdflib dependency here
     curatorTags = lambda : []
 
-from IPython import embed
-
-
 # logging
 
 def write_stdout(target_uri, document, doi, pmid, found_rrids, head, body, text, h):
@@ -356,6 +353,7 @@ def main(local=False):
                                         keyfile=expanduser('~/files/certs/scibot_test/tmp-nginx.key'),
                                         certfile=expanduser('~/files/certs/scibot_test/tmp-nginx.crt'),
                                         server_side=True)
+        log.debug('serving forever')
         server.serve_forever()
 
 

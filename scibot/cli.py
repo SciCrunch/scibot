@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3
 """SciBot command line utilities
 
 Usage:
@@ -14,7 +14,10 @@ Options:
 """
 
 import os
-from IPython import embed
+try:
+    breakpoint
+except NameError:
+    from IPython import embed as breakpoint
 
 
 def main():
@@ -92,7 +95,7 @@ def main():
             session.rollback()
             cur_sync.sync_annos(check=check)
             session.rollback()
-            embed()
+            breakpoint()
 
 
 if __name__ == '__main__':
