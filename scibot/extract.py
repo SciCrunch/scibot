@@ -328,7 +328,7 @@ def find_rrids(text):
         yield prefix, exact, exact_for_hypothesis, suffix
 
     # third round for BDSC
-    regex3 = '(.{0,32})(BDSC|BL|Bloomington|Bloomington)(\s?)(stock)?(\s)?(#|no|no\.)?(\s?)([0-9]{2,5})([^\w].{0,31})'
+    regex3 = '(.{0,32})(BDSC|BL|Bloomington)(\s?)(stock)?(\s)?(#|no|no\.)?(\s?)([0-9]{2,10})([^\w].{0,31})'
     matches3 = re.findall(regex3, text)
     for prefix, a, b, c, d, e, f, nums, suffix in matches3:
         yield prefix, f'RRID:BDSC_{nums.strip()}', f'{a}{b}{c}{d}{e}{f}{nums}', suffix
