@@ -45,7 +45,6 @@ prefixes = (
     ('CRL', 'IMSR_CRL'),
     #('CVCL', 'CVCL'),  # numbers + letters :/
     ('DGGR', 'DGGR'),
-    ('EM', 'IMSR_EM'),
     ('FBst', 'FBst'),
     ('FlyBase', 'FlyBase'),
     ('HAR', 'IMSR_HAR'),
@@ -62,7 +61,6 @@ prefixes = (
     ('TAC', 'IMSR_TAC'),
     ('TIGM', 'IMSR_TIGM'),
     ('TSC', 'TSC'),
-    ('WB', 'WB'),
     ('WB-STRAIN', 'WB-STRAIN'),
     ('WTSI', 'IMSR_WTSI'),
     ('ZDB', 'ZFIN_ZDB'),
