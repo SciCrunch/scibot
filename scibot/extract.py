@@ -20,7 +20,18 @@ agprefixes = (
     ('addgene cat', 'Addgene'),
     ('addgene.org', 'Addgene'),
     ('addgene ID', 'Addgene'),  # probably won't work
-    ('addgene cat. no.', 'Addgene'),  # probably won't work
+    ('addgene cat. no.', 'Addgene'),
+    ('Jackson Laboratory Cat', 'IMSR_JAX'),
+    ('Jackson Laboratory	Cat', 'IMSR_JAX'),
+    ('Jackson Laboratory Stock', 'IMSR_JAX'),
+    ('Jackson Laboratory	Stock', 'IMSR_JAX'),
+    ('The Jackson Laboratory', 'IMSR_JAX'),
+    ('The Jackson Laboratory Stock', 'IMSR_JAX'),
+    ('The Jackson Laboratory	Stock', 'IMSR_JAX'),
+    ('The Jackson Laboratory Cat', 'IMSR_JAX'),
+    ('The Jackson Laboratory	Cat', 'IMSR_JAX'),
+    ('Jackson Laboratories Cat', 'IMSR_JAX'),
+    ('Jackson Laboratories	Cat', 'IMSR_JAX'),
 )
 
 prefixes = (
@@ -34,7 +45,6 @@ prefixes = (
     ('CRL', 'IMSR_CRL'),
     #('CVCL', 'CVCL'),  # numbers + letters :/
     ('DGGR', 'DGGR'),
-    ('EM', 'IMSR_EM'),
     ('FBst', 'FBst'),
     ('FlyBase', 'FlyBase'),
     ('HAR', 'IMSR_HAR'),
@@ -51,7 +61,6 @@ prefixes = (
     ('TAC', 'IMSR_TAC'),
     ('TIGM', 'IMSR_TIGM'),
     ('TSC', 'TSC'),
-    ('WB', 'WB'),
     ('WB-STRAIN', 'WB-STRAIN'),
     ('WTSI', 'IMSR_WTSI'),
     ('ZDB', 'ZFIN_ZDB'),
@@ -292,7 +301,7 @@ def find_rrids(text):
     # second round
     orblock = '(' + '|'.join(col0(prefixes)) + ')'
     sep = '(:|_)([ \t]*)'
-    agsep = '([ \t]*#)([ \t]*)'
+    agsep = '([ \t]*#)([ \t]*)'  # FIXME doesn't work with "Stock No." or "Stock No:"
     agorblock = '(' + '|'.join(col0(agprefixes)) + ')'
     regex2 = ('(.{0,32})(?:' + orblock + f'{sep}(\d+)|(CVCL){sep}(\w+)|'
               + agorblock + f'{agsep}(\w+))([^\w].{{0,31}})')  # the first 0,32 always greedy matches???
@@ -315,6 +324,12 @@ def find_rrids(text):
         resolver_namespace = prefix_lookup[namespace]
         exact = 'RRID:' + resolver_namespace + sep + nums
         yield prefix, exact, exact_for_hypothesis, suffix
+
+    # third round for BDSC
+    regex3 = '(.{0,32})(BDSC|BL|Bl|Bloomington)(\s?)(stock)?(\s)?(#|no|no\.)?(\s?)([0-9]{2,10})([^\w].{0,31})'
+    matches3 = re.findall(regex3, text)
+    for prefix, a, b, c, d, e, f, nums, suffix in matches3:
+        yield prefix, f'RRID:BDSC_{nums.strip()}', f'{a}{b}{c}{d}{e}{f}{nums}', suffix
 
 # extract from post
 
