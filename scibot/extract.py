@@ -331,6 +331,13 @@ def find_rrids(text):
     for prefix, a, b, c, d, e, f, nums, suffix in matches3:
         yield prefix, f'RRID:BDSC_{nums.strip()}', f'{a}{b}{c}{d}{e}{f}{nums}', suffix
 
+    # fourth round for SAMN
+    regex4 = '(.{0,32})(SAMN)(\s?)([0-9]{3,15})([^\w].{0,31})'
+    matches4 = re.findall(regex3, text)
+    for prefix, a, b, nums, suffix in matches4:
+        yield prefix, f'RRID:SAMN{nums.strip()}', f'{a}{b}{nums}', suffix
+
+
 # extract from post
 
 def process_POST_request(request):
