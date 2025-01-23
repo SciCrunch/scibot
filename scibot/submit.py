@@ -130,7 +130,16 @@ def submit_to_h(target_uri, document, found, resolved, h, found_rrids, existing,
                                                                   tags=new_tags + ['RRIDCUR:Unresolved'],
                                                                   extra=extra,)
     if r is not None:
-        found_rrids[exact] = r.json()['links']['incontext']
+        if r.ok:
+            found_rrids[exact] = r.json()['links']['incontext']
+        else:
+            try:
+                r.raise_for_status()
+            except Exception as e:
+                # FIXME the fact that submission can fail silently and
+                # that it does not get resubmitted or retried is a
+                # major oversight ...
+                log.exception(e)
 
     return r
 
