@@ -46,7 +46,7 @@ setup(name='scibot',
       tests_require=tests_require,
       install_requires=[
           'beautifulsoup4',
-          'curio>=1.0',
+          'curio>=1.6',
           'docopt',
           'flask',
           #'gevent',
