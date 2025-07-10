@@ -115,7 +115,7 @@ def bookmarklet_wrapper(request, endpoint):
 
 from scibot.extract import process_POST_request, find_rrids as finder
 from scibot.check import check_already_submitted
-from scibot.services import existing_tags, get_pmid, rrid_resolver_xml
+from scibot.services import existing_tags, rrid_resolver_xml
 from scibot.submit import annotate_doi_pmid, submit_to_h
 
 
@@ -130,35 +130,20 @@ def make_find_check_resolve_submit(finder: Finder, notSubmittedCheck: Checker,
 
     return inner
 
-
+"""
 def pmid_logic(doi, pmid_from_source, target_uri=None, document=None, h=None, tags=None):
     # TODO move the annotation of errors out of this
-    if doi:
-        pmid_from_doi = get_pmid(doi)
-    else:
-        pmid_from_doi = None
-
-    if pmid_from_source and pmid_from_doi:
-        if pmid_from_source == pmid_from_doi:
-            pmid = pmid_from_source
-        else:
-            # TODO responses -> db
-            # TODO tag for marking errors explicitly without the dashboard?
-            r1 = annotate_doi_pmid(target_uri, document, None, pmid_from_doi, h, tags, 'ERROR\nPMID from DOI')
-            r2 = annotate_doi_pmid(target_uri, document, None, pmid_from_source, h, tags, 'ERROR\nPMID from source')
-            pmid = None
-    elif pmid_from_source:
+    if pmid_from_source:
         pmid = pmid_from_source
-    elif pmid_from_doi:
-        pmid = pmid_from_doi
     else:
         pmid = None
 
     return pmid
+"""
 
 
 def rrid_POST(request, h, logloc, URL_LOCK):
-    (target_uri, document, doi, pmid_from_source,
+    (target_uri, document, doi, pmid,
      head, body, text, cleaned_text) = process_POST_request(request)
     running = URL_LOCK.start_uri(target_uri)
     log.info(target_uri)
@@ -168,7 +153,7 @@ def rrid_POST(request, h, logloc, URL_LOCK):
 
     try:
         tags, unresolved_exacts = existing_tags(target_uri, h)
-        pmid = pmid_logic(doi, pmid_from_source, target_uri, document, h, tags)
+        #pmid = pmid_logic(doi, pmid_from_source, target_uri, document, h, tags)
         r = annotate_doi_pmid(target_uri, document, doi, pmid, h, tags)  # todo r -> db with responses
 
         # these values are defined up here as shared state that will be
