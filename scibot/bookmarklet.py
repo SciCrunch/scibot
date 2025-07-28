@@ -54,8 +54,9 @@ def write_log(target_uri, document, doi, pmid, found_rrids, head, body, text, h)
            'text':text,
            'document': document,
           }
-    fname = Path(source_log_location, f'rrid-{now}.json')
-    with open(fname.as_posix(), 'wt') as f:
+    fname = Path(source_log_location, f'rrid-{now}.json.gz')
+    
+    with gzip.open(fname, 'wt', encoding='utf-8') as f:  # Note 'wt' for text mode
         json.dump(log, f, sort_keys=True, indent=4)
 
 # types
