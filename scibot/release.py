@@ -17,7 +17,7 @@ from scibot.config import resolver_xml_filepath
 from scibot.export import bad_tags, get_proper_citation
 from scibot.submit import annotate_doi_pmid
 from scibot.papers import Papers, SameDOI, SamePMID
-from scibot.services import get_pmid
+# from scibot.services import get_pmid
 from scibot.workflow import parse_workflow
 try:
     breakpoint

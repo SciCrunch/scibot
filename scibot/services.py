@@ -37,6 +37,8 @@ def existing_tags(target_uri, h):
 
 # PMIDs
 
+# removed as metabase already handles this codepath
+"""
 def get_pmid(doi):  # TODO
     url = f'https://www.ncbi.nlm.nih.gov/pubmed/?term={quote(doi)}[Location ID]&report=uilist&format=text'
     body = requests.get(url).text
@@ -52,10 +54,13 @@ def get_pmid(doi):  # TODO
     params={'idtype':'auto', 'format':'json', 'ids':doi,}
     endpoint = 'https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/'
     resp = requests.get(endpoint, params=params)
-    if resp.ok:
-        pj = resp.json()
-    else:
-        resp.raise_for_status()
+    try:
+        if resp.ok:
+            pj = resp.json()
+        else:
+            resp.raise_for_status()
+    except HTTPError:
+        return 
 
     log.debug(pj)
     for rec in pj['records']:
@@ -63,7 +68,8 @@ def get_pmid(doi):  # TODO
             return 'PMID:' + rec['pmid']
         except KeyError:
             pass
-
+"""
+            
 # RRIDs
 
 def rrid_resolver_xml(exact, found_rrids):

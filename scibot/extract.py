@@ -441,7 +441,7 @@ class PaperId:
                 # scrapeIds(uri)
                 if doi is not None:
                     log.info(doi)
-                    pmid = get_pmid(doi)
+                    # pmid = get_pmid(doi)
                     log.warning('json malformed in get_pmid')
                     log.info(pmid)
                     resp = annotate_doi_pmid(url, doi, pmid, rrcu.h_curation, [])
