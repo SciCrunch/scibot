@@ -1,4 +1,4 @@
-form_data = {'body': ['\n'
+form_data = {'body': ('\n'
                       '<h1>SciBot</h1>\n'
                       '<p>To install the bookmarklet, drag this link -- <a '
                       'href="javascript:(function(){var xhr=new XMLHttpRequest();var '
@@ -23,8 +23,8 @@ form_data = {'body': ['\n'
                       'xhr.send(params)}());\n'
                       '</code>\n'
                       '\n'
-                      '\n'],
-             'data': ['SciBot\n'
+                      '\n'),
+             'data': ('SciBot\n'
                       '\n'
                       'To install the bookmarklet, drag this link -- SciBot localhost:4443 '
                       '-- to your bookmarks bar.\n'
@@ -41,12 +41,12 @@ form_data = {'body': ['\n'
                       "xhr.setRequestHeader('Content-type','application/x-www-form-urlencoded'); "
                       "xhr.setRequestHeader('Access-Control-Allow-Origin','*'); "
                       "xhr.onreadystatechange=function(){if(xhr.readyState==4)console.log('rrids: "
-                      "'+xhr.responseText)}; xhr.send(params)}());"],
-             'head': ['\n'
+                      "'+xhr.responseText)}; xhr.send(params)}());"),
+             'head': ('\n'
                       '<style>\n'
                       'h1 { font-family: Arial,sans-serif; color: #777; font-size: 36px; '
                       'font-weight: normal }\n'
                       'body { font-family: verdana; margin:.75in }\n'
                       '</style>\n'
-                      '<title>SciBot bookmarklet</title>'],
-'uri': ['https://localhost:4443/bookmarklet']}
+                      '<title>SciBot bookmarklet</title>'),
+'uri': ('https://localhost:4443/bookmarklet')}
