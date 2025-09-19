@@ -256,6 +256,7 @@ def main(local=False):
     _backup_sync_port = int(_sdefaults['--port'])
 
     app = Flask('scibot bookmarklet server')
+    app.config['MAX_FORM_MEMORY_SIZE'] = 1024 * 1024 * 100  # 100 MB
 
     h = HypothesisUtils(username=username, token=api_token, group=group)
     h2 = HypothesisUtils(username=username, token=api_token, group=group2)
