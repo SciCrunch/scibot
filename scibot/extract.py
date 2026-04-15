@@ -318,11 +318,21 @@ def find_rrids(text):
         if re.match(regex1, ''.join((prefix, namespace, sep, spaces, nums, suffix))) is not None:
             #print('already matched')
             continue  # already caught it above and don't want to add it again
+        # if ag:  # switch sep for addgene after match
+        #     sep = '_'
+        # exact_for_hypothesis = namespace + sep + nums
+        # resolver_namespace = prefix_lookup[namespace]
+        # exact = 'RRID:' + resolver_namespace + sep + nums
+        # yield prefix, exact, exact_for_hypothesis, suffix
         if ag:  # switch sep for addgene after match
             sep = '_'
         exact_for_hypothesis = namespace + sep + nums
         resolver_namespace = prefix_lookup[namespace]
-        exact = 'RRID:' + resolver_namespace + sep + nums
+        # FIX for BDSC normalization
+        if resolver_namespace == 'BDSC':
+            exact = 'RRID:BDSC_' + nums
+        else:
+            exact = 'RRID:' + resolver_namespace + sep + nums
         yield prefix, exact, exact_for_hypothesis, suffix
 
     # third round for BDSC
